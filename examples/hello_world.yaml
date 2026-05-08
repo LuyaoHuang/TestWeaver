@@ -1,0 +1,30 @@
+operations:
+  - name: create_file
+    description: "Create a hello world file"
+    type: action
+    provides:
+      - file.exists
+    run: echo "hello world" > /tmp/testweaver_hello.txt
+
+  - name: check_content
+    description: "Verify file contains hello world"
+    type: check
+    requires:
+      - file.exists
+    run: grep -q "hello world" /tmp/testweaver_hello.txt
+
+  - name: remove_file
+    description: "Remove the hello world file"
+    type: cleanup
+    requires:
+      - file.exists
+    clears:
+      - file.exists
+    run: rm -f /tmp/testweaver_hello.txt
+
+suite:
+  name: "Hello World"
+  description: "Simple file creation and verification test"
+  targets:
+    - check_content
+  cleanup: true
