@@ -74,14 +74,24 @@ class TestDefinition(BaseModel):
     def validate_state_references(self) -> TestDefinition:
         all_provided: set[str] = set()
         all_cleared: set[str] = set()
+        all_grafts: list[tuple[str, str]] = []
         for op in self.operations:
             all_provided.update(op.provides)
             all_cleared.update(op.clears)
             all_cleared.update(op.cuts)
             for g in op.grafts:
                 all_provided.add(g.tgt)
+                all_grafts.append((g.src, g.tgt))
 
         all_states = all_provided | all_cleared
+
+        # Graft copies subtrees: if src.X is provided and graft(src, tgt)
+        # exists, then tgt.X is also reachable
+        for src, tgt in all_grafts:
+            src_prefix = src + '.'
+            for state in list(all_states):
+                if state.startswith(src_prefix):
+                    all_states.add(tgt + state[len(src):])
 
         for op in self.operations:
             for req in op.requires:
@@ -144,6 +154,26 @@ class TestCase(BaseModel):
     description: str = ""
 
 
+def _load_definition_from_module(path: Path) -> TestDefinition:
+    from .loader import load_module, extract_operations
+    module = load_module(path)
+    op_pairs = extract_operations(module)
+    operations = []
+    for op, func in op_pairs:
+        op.callable = func
+        operations.append(op)
+    targets = [op.name for op in operations if op.type == "check"]
+    if not targets:
+        targets = [operations[-1].name] if operations else []
+    return TestDefinition(
+        operations=operations,
+        suite=TestSuite(
+            name=path.stem,
+            targets=targets,
+        ),
+    )
+
+
 def _state_is_reachable(required: str, all_states: set[str]) -> bool:
     if required in all_states:
         return True
@@ -154,6 +184,10 @@ def _state_is_reachable(required: str, all_states: set[str]) -> bool:
 
 def load_definition(path: str | Path) -> TestDefinition:
     path = Path(path)
+
+    if path.suffix == '.py':
+        return _load_definition_from_module(path)
+
     with open(path) as f:
         data = yaml.safe_load(f)
 

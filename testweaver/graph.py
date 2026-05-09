@@ -168,18 +168,22 @@ def generate_cases(
                 break
 
             try:
-                raw_paths = nx.all_simple_paths(graph, initial, target_node)
-                seen: set[tuple] = set()
-                paths: list[list] = []
-                for p in raw_paths:
-                    key = tuple(id(n) for n in p)
-                    if key not in seen:
-                        seen.add(key)
-                        paths.append(p)
-            except nx.NodeNotFound:
+                shortest_len = nx.shortest_path_length(
+                    graph, initial, target_node
+                )
+                max_depth = shortest_len + 2
+                raw_paths = nx.all_simple_paths(
+                    graph, initial, target_node, cutoff=max_depth,
+                )
+            except (nx.NodeNotFound, nx.NetworkXNoPath):
                 continue
 
-            for path in paths:
+            seen_paths: set[tuple] = set()
+            for path in raw_paths:
+                path_key = tuple(id(n) for n in path)
+                if path_key in seen_paths:
+                    continue
+                seen_paths.add(path_key)
                 if case_count >= definition.suite.max_cases:
                     break
 
