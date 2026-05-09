@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ParamDef(BaseModel):
@@ -17,6 +17,8 @@ class ParamDef(BaseModel):
 
 
 class Operation(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     name: str
     description: str = ""
     type: Literal["action", "check", "setup", "cleanup"] = "action"
@@ -25,6 +27,7 @@ class Operation(BaseModel):
     clears: list[str] = Field(default_factory=list)
     params: list[ParamDef] = Field(default_factory=list)
     run: str = ""
+    callable: Callable | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def check_cleanup_has_clears(self) -> Operation:
@@ -45,7 +48,8 @@ class TestSuite(BaseModel):
 
 
 class TestDefinition(BaseModel):
-    operations: list[Operation]
+    operations: list[Operation] = Field(default_factory=list)
+    modules: list[str] = Field(default_factory=list)
     suite: TestSuite
 
     @model_validator(mode="after")
@@ -133,6 +137,27 @@ def load_definition(path: str | Path) -> TestDefinition:
     path = Path(path)
     with open(path) as f:
         data = yaml.safe_load(f)
+
+    module_paths = data.get('modules', [])
+    if module_paths:
+        from .loader import load_operations_from_modules
+        op_pairs = load_operations_from_modules(module_paths, base_dir=path.parent)
+        module_ops = []
+        for op, func in op_pairs:
+            op.callable = func
+            module_ops.append(op)
+        existing = data.get('operations', [])
+        data['operations'] = existing + [
+            op.model_dump(exclude={'callable'}) for op in module_ops
+        ]
+        data.pop('modules', None)
+        defn = TestDefinition.model_validate(data)
+        op_by_name = {op.name: op for op in defn.operations}
+        for op, func in op_pairs:
+            if op.name in op_by_name:
+                op_by_name[op.name].callable = func
+        return defn
+
     return TestDefinition.model_validate(data)
 
 

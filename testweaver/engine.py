@@ -35,11 +35,35 @@ def _run_command(command: str, timeout: int = 300) -> tuple[int, str, str]:
         return -1, "", str(e)
 
 
+def _run_callable(
+    func: Any,
+    params: dict[str, Any],
+) -> tuple[bool, str, str]:
+    try:
+        func(params)
+        return True, "", ""
+    except Exception as e:
+        return False, "", str(e)
+
+
 def run_step(
     operation: Operation,
     params: dict[str, Any],
     timeout: int = 300,
 ) -> StepResult:
+    if operation.callable is not None:
+        start = time.monotonic()
+        ok, stdout, stderr = _run_callable(operation.callable, params)
+        duration = (time.monotonic() - start) * 1000
+        return StepResult(
+            operation=operation.name,
+            status="pass" if ok else "fail",
+            duration_ms=round(duration, 2),
+            stdout=stdout,
+            stderr=stderr,
+            error=None if ok else stderr,
+        )
+
     command = _substitute_params(operation.run, params)
     if not command.strip():
         return StepResult(

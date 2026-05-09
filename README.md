@@ -68,6 +68,63 @@ testweaver run my_test.yaml --output results.json
 testweaver analyze results.json -d my_test.yaml
 ```
 
+## Python Modules (Recommended)
+
+Instead of specifying dependencies in YAML, define operations in Python with decorators — keeping dependency declarations colocated with the implementation:
+
+```python
+# my_ops.py
+from testweaver import action, check, cleanup, provides, requires, clears
+
+@action
+@provides('file.exists')
+def create_file(params):
+    """Create a hello world file"""
+    import subprocess
+    subprocess.run('echo "hello world" > /tmp/test.txt', shell=True, check=True)
+
+@check
+@requires('file.exists')
+def check_content(params):
+    """Verify file contains hello world"""
+    import subprocess
+    subprocess.run('grep -q "hello world" /tmp/test.txt', shell=True, check=True)
+
+@cleanup
+@requires('file.exists')
+@clears('file.exists')
+def remove_file(params):
+    """Remove the hello world file"""
+    import subprocess
+    subprocess.run('rm -f /tmp/test.txt', shell=True, check=True)
+```
+
+Then reference the module from YAML — no need to redeclare dependencies:
+
+```yaml
+modules:
+  - my_ops.py
+
+suite:
+  name: "Hello World"
+  targets: [check_content]
+  cleanup: true
+```
+
+You can also mix module-defined and YAML-defined operations in the same definition.
+
+### Available Decorators
+
+| Decorator | Description |
+|-----------|-------------|
+| `@action` | Marks operation as action type |
+| `@check` | Marks operation as check type |
+| `@setup` | Marks operation as setup type |
+| `@cleanup` | Marks operation as cleanup type |
+| `@provides(*states)` | Declares states this operation creates |
+| `@requires(*states)` | Declares states this operation needs |
+| `@clears(*states)` | Declares states this operation removes |
+
 ## Concepts
 
 ### Operations
@@ -76,13 +133,13 @@ An operation is a single test step. Each operation declares:
 
 | Field | Description |
 |-------|-------------|
-| `name` | Unique identifier |
-| `description` | Natural language description (for AI agents and humans) |
+| `name` | Unique identifier (function name when using modules) |
+| `description` | Natural language description (docstring when using modules) |
 | `type` | `action`, `check`, `setup`, or `cleanup` |
 | `provides` | State keys this operation creates |
 | `requires` | State keys that must be active before this operation can run |
 | `clears` | State keys this operation removes |
-| `run` | Shell command to execute |
+| `run` | Shell command to execute (YAML-only mode) |
 | `params` | Parameter definitions with types and defaults |
 
 ### Dependency Graph
