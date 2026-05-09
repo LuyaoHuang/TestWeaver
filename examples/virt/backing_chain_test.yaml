@@ -1,0 +1,10 @@
+modules:
+  - vm_basic.py
+  - backing_chain.py
+
+suite:
+  name: backing_chain
+  description: "Snapshot backing chain testing"
+  targets: [check_snapshots]
+  max_cases: 50
+  cleanup: true

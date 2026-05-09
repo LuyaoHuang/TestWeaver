@@ -1,0 +1,10 @@
+modules:
+  - vm_basic.py
+  - save_restore.py
+
+suite:
+  name: save_restore
+  description: "Guest save/restore lifecycle testing"
+  targets: [check_restored_guest, check_managedsaved_guest, check_saved_guest]
+  max_cases: 50
+  cleanup: true

@@ -1,0 +1,10 @@
+modules:
+  - vm_basic.py
+  - vtpm.py
+
+suite:
+  name: vtpm
+  description: "vTPM device lifecycle testing"
+  targets: [verify_tpm_in_vm, verify_swtpm_state_file]
+  max_cases: 50
+  cleanup: true

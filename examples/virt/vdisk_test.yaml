@@ -1,0 +1,10 @@
+modules:
+  - vm_basic.py
+  - vdisk.py
+
+suite:
+  name: vdisk
+  description: "Virtual disk lifecycle testing"
+  targets: [check_disk]
+  max_cases: 50
+  cleanup: true
