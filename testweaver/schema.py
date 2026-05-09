@@ -21,6 +21,30 @@ class GraftDef(BaseModel):
     tgt: str
 
 
+class ParamChoice(BaseModel):
+    name: str
+    values: list[Any]
+    description: str = ""
+
+
+class ParamAxis(BaseModel):
+    name: str
+    values: list[Any]
+    description: str = ""
+
+
+class ParamConstraint(BaseModel):
+    when: dict[str, Any]
+    skip_ops: list[str] = Field(default_factory=list)
+    exclude: bool = False
+    reason: str = ""
+
+
+class ParamMatrix(BaseModel):
+    axes: list[ParamAxis] = Field(default_factory=list)
+    constraints: list[ParamConstraint] = Field(default_factory=list)
+
+
 class Operation(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -34,8 +58,10 @@ class Operation(BaseModel):
     grafts: list[GraftDef] = Field(default_factory=list)
     cuts: list[str] = Field(default_factory=list)
     params: list[ParamDef] = Field(default_factory=list)
+    skip_when: list[dict[str, Any]] = Field(default_factory=list)
     run: str = ""
     callable: Callable | None = Field(default=None, exclude=True)
+    param_provider: str | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def check_cleanup_has_clears(self) -> Operation:
@@ -50,6 +76,8 @@ class TestSuite(BaseModel):
     name: str
     description: str = ""
     params: dict[str, Any] = Field(default_factory=dict)
+    param_choices: list[ParamChoice] = Field(default_factory=list)
+    param_matrix: ParamMatrix | None = None
     targets: list[str]
     max_cases: int = 100
     cleanup: bool = True
@@ -95,11 +123,23 @@ class TestDefinition(BaseModel):
 
         for op in self.operations:
             for req in op.requires:
+                if req.startswith('params.'):
+                    continue
                 if not _state_is_reachable(req, all_states):
                     raise ValueError(
                         f"Operation '{op.name}' requires state '{req}' "
                         f"which is never provided or cleared by any operation"
                     )
+        return self
+
+    @model_validator(mode="after")
+    def validate_no_dual_param_modes(self) -> TestDefinition:
+        has_choices = bool(self.suite.param_choices)
+        has_matrix = self.suite.param_matrix and bool(self.suite.param_matrix.axes)
+        if has_choices and has_matrix:
+            raise ValueError(
+                "Cannot use both 'param_choices' and 'param_matrix' in the same suite"
+            )
         return self
 
 
@@ -152,6 +192,7 @@ class TestCase(BaseModel):
     target: str
     cleanup_steps: list[str] = Field(default_factory=list)
     description: str = ""
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
 def _load_definition_from_module(path: Path) -> TestDefinition:

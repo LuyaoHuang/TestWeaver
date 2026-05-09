@@ -1,7 +1,11 @@
-from testweaver import action, check, cleanup, provides, requires, excludes, cut
+from testweaver import (
+    action, check, cleanup, provides, requires, excludes, cut,
+    when_param, unless_param,
+)
 
 
 @action
+@when_param('tpm_backend', 'emulator')
 @provides('swtpm_installed')
 @excludes('swtpm_installed')
 def install_swtpm(params):
@@ -19,6 +23,7 @@ def uninstall_swtpm(params):
 
 
 @action
+@when_param('tpm_backend', 'emulator')
 @provides('tpm_secret')
 @excludes('tpm_secret')
 def create_tpm_secret(params):
@@ -37,16 +42,31 @@ def undefine_tpm_secret(params):
 
 
 @action
+@when_param('tpm_backend', 'emulator')
 @requires('vm.config', 'swtpm_installed')
 @excludes('vm.config.tpm')
 @provides('vm.config.tpm')
-def add_tpm_in_inactive_xml(params):
-    """Add TPM device to inactive guest XML."""
+def add_tpm_emulator(params):
+    """Add emulated TPM device to inactive guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     tpm_model = params.get('tpm_model', 'tpm-crb')
-    print(f"# Adding TPM model={tpm_model} to {guest_name} XML")
+    print(f"# Adding emulated TPM model={tpm_model} to {guest_name} XML")
     print(f"virsh dumpxml {guest_name} > /tmp/vm.xml")
-    print("# Insert <tpm> element into XML")
+    print("# Insert <tpm model='{tpm_model}'><backend type='emulator'/></tpm>")
+    print(f"virsh define /tmp/vm.xml")
+
+
+@action
+@when_param('tpm_backend', 'passthrough')
+@requires('vm.config')
+@excludes('vm.config.tpm')
+@provides('vm.config.tpm')
+def add_tpm_passthrough(params):
+    """Add passthrough TPM device to inactive guest XML."""
+    guest_name = params.get('guest_name', 'testvm')
+    print(f"# Adding passthrough TPM to {guest_name} XML")
+    print(f"virsh dumpxml {guest_name} > /tmp/vm.xml")
+    print("# Insert <tpm model='tpm-tis'><backend type='passthrough'><device path='/dev/tpm0'/></backend></tpm>")
     print(f"virsh define /tmp/vm.xml")
 
 

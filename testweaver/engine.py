@@ -98,7 +98,7 @@ def run_case(
     timeout: int = 300,
 ) -> CaseResult:
     ops_by_name = {op.name: op for op in definition.operations}
-    params = dict(definition.suite.params)
+    params = dict(case.params) if case.params else dict(definition.suite.params)
     step_results: list[StepResult] = []
     case_status = "pass"
     start = time.monotonic()

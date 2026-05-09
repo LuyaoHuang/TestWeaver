@@ -1,0 +1,15 @@
+modules:
+  - vm_basic.py
+  - schedinfo.py
+
+suite:
+  name: schedinfo
+  description: "CPU scheduling parameter testing with parameter matrix"
+  targets: [check_cpu_shares]
+  params:
+    guest_name: testvm
+  param_matrix:
+    axes:
+      - name: cpu_shares
+        values: [512, 1024, 2048]
+  cleanup: true

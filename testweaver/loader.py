@@ -37,6 +37,7 @@ def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
             excludes=meta.get('excludes', []),
             grafts=grafts,
             cuts=meta.get('cuts', []),
+            skip_when=meta.get('skip_when', []),
         )
         results.append((op, obj))
     return results

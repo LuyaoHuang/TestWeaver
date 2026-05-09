@@ -13,6 +13,16 @@ from .graph import build_graph, explain_graph, generate_cases
 from .schema import CaseResult, TestDefinition, export_json_schema, load_definition
 
 
+def _parse_param_overrides(params: tuple[str, ...]) -> dict:
+    result = {}
+    for p in params:
+        if '=' not in p:
+            raise click.BadParameter(f"Invalid param format '{p}', expected key=value")
+        key, val = p.split('=', 1)
+        result[key.strip()] = val.strip()
+    return result
+
+
 @click.group()
 @click.version_option(version=__version__)
 def main():
@@ -42,11 +52,15 @@ def validate(path: str):
 @main.command()
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
-def generate(path: str, fmt: str):
+@click.option("--param", "-p", multiple=True, help="Override parameter: key=value")
+def generate(path: str, fmt: str, param: tuple[str, ...]):
     """Generate test cases from a definition file."""
     definition = load_definition(path)
-    graph = build_graph(definition.operations)
-    cases = generate_cases(definition, graph)
+    if param:
+        overrides = _parse_param_overrides(param)
+        definition.suite.params.update(overrides)
+
+    cases = generate_cases(definition)
 
     if fmt == "json":
         output = [json.loads(c.model_dump_json()) for c in cases]
@@ -55,6 +69,8 @@ def generate(path: str, fmt: str):
         for case in cases:
             click.echo(f"\n--- {case.case_id} ---")
             click.echo(f"Target: {case.target}")
+            if case.params:
+                click.echo(f"Params: {case.params}")
             click.echo(f"Steps: {' -> '.join(case.steps)}")
             if case.cleanup_steps:
                 click.echo(f"Cleanup: {' -> '.join(case.cleanup_steps)}")
@@ -66,11 +82,15 @@ def generate(path: str, fmt: str):
 @click.option("--output", "-o", type=click.Path(), help="Save results to file")
 @click.option("--timeout", default=300, help="Per-step timeout in seconds")
 @click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
-def run(path: str, output: str | None, timeout: int, fmt: str):
+@click.option("--param", "-p", multiple=True, help="Override parameter: key=value")
+def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...]):
     """Run test cases from a definition file."""
     definition = load_definition(path)
-    graph = build_graph(definition.operations)
-    cases = generate_cases(definition, graph)
+    if param:
+        overrides = _parse_param_overrides(param)
+        definition.suite.params.update(overrides)
+
+    cases = generate_cases(definition)
 
     click.echo(f"Running {len(cases)} test case(s)...", err=True)
     results = run_all(cases, definition, timeout)
@@ -148,6 +168,45 @@ def show_graph(path: str, fmt: str):
         for name, reach in info["target_reachability"].items():
             status = "reachable" if reach["reachable"] else "UNREACHABLE"
             click.echo(f"  {name}: {status} (from {reach['reachable_from_n_states']} state(s))")
+
+        if "param_choices" in info:
+            click.echo("\nParameter choices:")
+            for pc in info["param_choices"]:
+                click.echo(f"  {pc['name']}: {pc['values']}")
+        if "param_matrix" in info:
+            pm = info["param_matrix"]
+            click.echo(f"\nParameter matrix: {pm['total_combinations']} combinations")
+            for a in pm["axes"]:
+                click.echo(f"  {a['name']}: {a['values']}")
+
+
+@main.command("matrix")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
+def show_matrix(path: str, fmt: str):
+    """Show parameter combinations for a definition."""
+    definition = load_definition(path)
+
+    if definition.suite.param_choices:
+        from itertools import product as cartesian_product
+        axes = definition.suite.param_choices
+        names = [pc.name for pc in axes]
+        value_lists = [pc.values for pc in axes]
+        combos = [dict(zip(names, vals)) for vals in cartesian_product(*value_lists)]
+    elif definition.suite.param_matrix and definition.suite.param_matrix.axes:
+        from .matrix import expand_matrix
+        combos = expand_matrix(definition.suite.param_matrix)
+    else:
+        click.echo("No parameter choices or matrix defined.", err=True)
+        sys.exit(1)
+
+    if fmt == "json":
+        click.echo(json.dumps(combos, indent=2))
+    else:
+        click.echo(f"Total combinations: {len(combos)}\n")
+        for i, combo in enumerate(combos, 1):
+            parts = ", ".join(f"{k}={v}" for k, v in sorted(combo.items()))
+            click.echo(f"  {i}. {parts}")
 
 
 @main.command("schema")

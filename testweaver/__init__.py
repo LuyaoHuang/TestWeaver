@@ -13,4 +13,7 @@ from testweaver.decorators import (
     provides,
     requires,
     setup,
+    skip_when,
+    unless_param,
+    when_param,
 )

@@ -95,3 +95,36 @@ def setup(func: Callable) -> Callable:
 
 def cleanup(func: Callable) -> Callable:
     return _type_decorator('cleanup')(func)
+
+
+def _safe_val(value: Any) -> str:
+    return str(value).replace('.', '_')
+
+
+def when_param(param_name: str, value: Any) -> Callable:
+    """Require a specific parameter value (Approach 1: params as state)."""
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        state = f"params.{param_name}.{_safe_val(value)}"
+        meta.setdefault('requires', []).append(state)
+        return func
+    return decorator
+
+
+def unless_param(param_name: str, value: Any) -> Callable:
+    """Exclude when a specific parameter value is set (Approach 1: params as state)."""
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        state = f"params.{param_name}.{_safe_val(value)}"
+        meta.setdefault('excludes', []).append(state)
+        return func
+    return decorator
+
+
+def skip_when(**conditions: Any) -> Callable:
+    """Skip this operation when parameter conditions match (Approach 2: matrix)."""
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        meta.setdefault('skip_when', []).append(conditions)
+        return func
+    return decorator

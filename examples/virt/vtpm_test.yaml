@@ -4,7 +4,12 @@ modules:
 
 suite:
   name: vtpm
-  description: "vTPM device lifecycle testing"
+  description: "vTPM device lifecycle testing with parameter graph"
   targets: [verify_tpm_in_vm, verify_swtpm_state_file]
+  params:
+    guest_name: testvm
+  param_choices:
+    - name: tpm_backend
+      values: [emulator, passthrough]
   max_cases: 50
   cleanup: true
