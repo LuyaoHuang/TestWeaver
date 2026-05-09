@@ -16,6 +16,11 @@ class ParamDef(BaseModel):
     required: bool = True
 
 
+class GraftDef(BaseModel):
+    src: str
+    tgt: str
+
+
 class Operation(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -25,15 +30,18 @@ class Operation(BaseModel):
     provides: list[str] = Field(default_factory=list)
     requires: list[str] = Field(default_factory=list)
     clears: list[str] = Field(default_factory=list)
+    excludes: list[str] = Field(default_factory=list)
+    grafts: list[GraftDef] = Field(default_factory=list)
+    cuts: list[str] = Field(default_factory=list)
     params: list[ParamDef] = Field(default_factory=list)
     run: str = ""
     callable: Callable | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def check_cleanup_has_clears(self) -> Operation:
-        if self.type == "cleanup" and not self.clears:
+        if self.type == "cleanup" and not self.clears and not self.cuts:
             raise ValueError(
-                f"Operation '{self.name}' is type 'cleanup' but has no 'clears' entries"
+                f"Operation '{self.name}' is type 'cleanup' but has no 'clears' or 'cuts' entries"
             )
         return self
 
@@ -64,17 +72,20 @@ class TestDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_state_references(self) -> TestDefinition:
-        all_provided = set()
-        all_cleared = set()
+        all_provided: set[str] = set()
+        all_cleared: set[str] = set()
         for op in self.operations:
             all_provided.update(op.provides)
             all_cleared.update(op.clears)
+            all_cleared.update(op.cuts)
+            for g in op.grafts:
+                all_provided.add(g.tgt)
 
         all_states = all_provided | all_cleared
 
         for op in self.operations:
             for req in op.requires:
-                if req not in all_states:
+                if not _state_is_reachable(req, all_states):
                     raise ValueError(
                         f"Operation '{op.name}' requires state '{req}' "
                         f"which is never provided or cleared by any operation"
@@ -131,6 +142,14 @@ class TestCase(BaseModel):
     target: str
     cleanup_steps: list[str] = Field(default_factory=list)
     description: str = ""
+
+
+def _state_is_reachable(required: str, all_states: set[str]) -> bool:
+    if required in all_states:
+        return True
+    # Hierarchical: requiring 'a.b' is satisfied if 'a.b.c' is provided
+    prefix = required + '.'
+    return any(s.startswith(prefix) for s in all_states)
 
 
 def load_definition(path: str | Path) -> TestDefinition:

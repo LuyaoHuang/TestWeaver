@@ -6,7 +6,7 @@ import inspect
 from pathlib import Path
 from typing import Any, Callable
 
-from .schema import Operation
+from .schema import GraftDef, Operation
 
 
 def load_module(path: str | Path) -> Any:
@@ -25,6 +25,8 @@ def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
         meta = getattr(obj, '_tw_meta', None)
         if meta is None:
             continue
+        grafts_raw = meta.get('grafts', [])
+        grafts = [GraftDef(**g) for g in grafts_raw]
         op = Operation(
             name=name,
             description=(obj.__doc__ or "").strip(),
@@ -32,6 +34,9 @@ def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
             provides=meta.get('provides', []),
             requires=meta.get('requires', []),
             clears=meta.get('clears', []),
+            excludes=meta.get('excludes', []),
+            grafts=grafts,
+            cuts=meta.get('cuts', []),
         )
         results.append((op, obj))
     return results

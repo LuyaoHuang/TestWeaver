@@ -4,26 +4,50 @@ from itertools import product
 
 import networkx as nx
 
+from .env import Env
 from .errors import UnreachableTargetError
 from .schema import Operation, TestCase, TestDefinition
 
 
-def _state_key(state: frozenset[str]) -> str:
-    if not state:
-        return "{}"
-    return "{" + ", ".join(sorted(state)) + "}"
+def _state_key(env: Env) -> str:
+    return repr(env)
+
+
+def _apply_operation(env: Env, op: Operation) -> Env | None:
+    # 1. Check positive requirements (Consumer.REQUIRE)
+    for state in op.requires:
+        if not env.is_active(state):
+            return None
+    # 2. Check negative requirements (Consumer.REQUIRE_N)
+    for state in op.excludes:
+        if env.is_active(state):
+            return None
+    # 3. Copy env
+    new_env = env.copy()
+    # 4. Apply grafts first (like original: Graft/Cut before Provider)
+    for g in op.grafts:
+        new_env.graft(g.src, g.tgt)
+    # 5. Apply cuts (remove subtree)
+    for path in op.cuts:
+        new_env.clear(path)
+    # 6. Apply provides (Provider.SET)
+    for state in op.provides:
+        new_env.set(state)
+    # 7. Apply clears (Provider.CLEAR — single node only)
+    for state in op.clears:
+        new_env.unset(state)
+    return new_env
 
 
 def build_graph(operations: list[Operation]) -> nx.MultiDiGraph:
     """Build a state-transition graph from operations.
 
-    Nodes are frozensets of active state keys.
+    Nodes are Env objects representing hierarchical state trees.
     Edges are operations that transition between states.
-    Uses MultiDiGraph to support multiple operations between the same state pair.
     """
     graph = nx.MultiDiGraph()
-    initial = frozenset()
-    graph.add_node(initial, label="{}")
+    initial = Env()
+    graph.add_node(initial, label=_state_key(initial))
 
     queue = [initial]
     visited = {initial}
@@ -34,20 +58,16 @@ def build_graph(operations: list[Operation]) -> nx.MultiDiGraph:
             if op.type == "check":
                 continue
 
-            if not set(op.requires).issubset(current):
+            new_env = _apply_operation(current, op)
+            if new_env is None or new_env == current:
                 continue
 
-            next_state = (current | frozenset(op.provides)) - frozenset(op.clears)
+            if new_env not in visited:
+                visited.add(new_env)
+                graph.add_node(new_env, label=_state_key(new_env))
+                queue.append(new_env)
 
-            if next_state == current:
-                continue
-
-            if next_state not in visited:
-                visited.add(next_state)
-                graph.add_node(next_state, label=_state_key(next_state))
-                queue.append(next_state)
-
-            graph.add_edge(current, next_state, operation=op.name)
+            graph.add_edge(current, new_env, operation=op.name)
 
     return graph
 
@@ -55,28 +75,31 @@ def build_graph(operations: list[Operation]) -> nx.MultiDiGraph:
 def _find_target_nodes(
     graph: nx.MultiDiGraph,
     target_op: Operation,
-) -> list[frozenset[str]]:
-    required = set(target_op.requires)
-    return [
-        node for node in graph.nodes
-        if required.issubset(node)
-    ]
+) -> list[Env]:
+    nodes = []
+    for node in graph.nodes:
+        if not all(node.is_active(r) for r in target_op.requires):
+            continue
+        if any(node.is_active(s) for s in target_op.excludes):
+            continue
+        nodes.append(node)
+    return nodes
 
 
 def _edges_between(
     graph: nx.MultiDiGraph,
-    u: frozenset[str],
-    v: frozenset[str],
+    u: Env,
+    v: Env,
 ) -> list[str]:
     return [data["operation"] for _, data in graph[u][v].items()]
 
 
 def _find_cleanup_path(
     graph: nx.MultiDiGraph,
-    from_state: frozenset[str],
+    from_state: Env,
     operations: list[Operation],
 ) -> list[str]:
-    initial = frozenset()
+    initial = Env()
     if from_state == initial:
         return []
 
@@ -92,17 +115,15 @@ def _find_cleanup_path(
     while queue:
         current = queue.pop(0)
         for op in cleanup_ops:
-            if not set(op.requires).issubset(current):
+            new_env = _apply_operation(current, op)
+            if new_env is None or new_env == current:
                 continue
-            next_state = (current | frozenset(op.provides)) - frozenset(op.clears)
-            if next_state == current:
-                continue
-            if next_state not in cleanup_graph:
-                cleanup_graph.add_node(next_state)
-            cleanup_graph.add_edge(current, next_state, operation=op.name)
-            if next_state not in visited:
-                visited.add(next_state)
-                queue.append(next_state)
+            if new_env not in cleanup_graph:
+                cleanup_graph.add_node(new_env)
+            cleanup_graph.add_edge(current, new_env, operation=op.name)
+            if new_env not in visited:
+                visited.add(new_env)
+                queue.append(new_env)
 
     if initial not in cleanup_graph:
         return []
@@ -134,12 +155,12 @@ def generate_cases(
         target_nodes = _find_target_nodes(graph, target_op)
 
         if not target_nodes:
-            all_reachable = set()
+            all_reachable: set[str] = set()
             for node in graph.nodes:
-                all_reachable.update(node)
+                all_reachable.update(node.to_flat_set())
             raise UnreachableTargetError(target_name, all_reachable)
 
-        initial = frozenset()
+        initial = Env()
         case_count = 0
 
         for target_node in target_nodes:
@@ -151,7 +172,7 @@ def generate_cases(
                 seen: set[tuple] = set()
                 paths: list[list] = []
                 for p in raw_paths:
-                    key = tuple(p)
+                    key = tuple(id(n) for n in p)
                     if key not in seen:
                         seen.add(key)
                         paths.append(p)
@@ -174,7 +195,9 @@ def generate_cases(
 
                     cleanup_steps = []
                     if definition.suite.cleanup:
-                        final_state = target_node | frozenset(target_op.provides)
+                        final_state = _apply_operation(target_node, target_op)
+                        if final_state is None:
+                            final_state = target_node
                         cleanup_steps = _find_cleanup_path(
                             graph, final_state, definition.operations
                         )
@@ -206,21 +229,28 @@ def explain_graph(
     if graph is None:
         graph = build_graph(definition.operations)
 
-    initial = frozenset()
+    initial = Env()
     all_reachable_states: set[str] = set()
     for node in graph.nodes:
-        all_reachable_states.update(node)
+        all_reachable_states.update(node.to_flat_set())
 
     operation_summary = []
     for op in definition.operations:
-        operation_summary.append({
+        entry: dict = {
             "name": op.name,
             "type": op.type,
             "requires": op.requires,
             "provides": op.provides,
             "clears": op.clears,
             "description": op.description,
-        })
+        }
+        if op.excludes:
+            entry["excludes"] = op.excludes
+        if op.grafts:
+            entry["grafts"] = [{"src": g.src, "tgt": g.tgt} for g in op.grafts]
+        if op.cuts:
+            entry["cuts"] = op.cuts
+        operation_summary.append(entry)
 
     ops_by_name = {op.name: op for op in definition.operations}
     target_reachability = {}

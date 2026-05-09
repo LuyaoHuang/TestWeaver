@@ -49,6 +49,30 @@ def clears(*states: str) -> Callable:
     return decorator
 
 
+def excludes(*states: str) -> Callable:
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        meta.setdefault('excludes', []).extend(states)
+        return func
+    return decorator
+
+
+def graft(src: str, tgt: str) -> Callable:
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        meta.setdefault('grafts', []).append({'src': src, 'tgt': tgt})
+        return func
+    return decorator
+
+
+def cut(*paths: str) -> Callable:
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        meta.setdefault('cuts', []).extend(paths)
+        return func
+    return decorator
+
+
 def _type_decorator(op_type: str) -> Callable:
     def decorator(func: Callable) -> Callable:
         meta = _ensure_meta(func)
