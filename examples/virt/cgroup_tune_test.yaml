@@ -1,0 +1,45 @@
+modules:
+  - vm_basic.py
+  - cgroup_tune.py
+
+suite:
+  name: cgroup_tune
+  description: "Cgroup tuning: blkiotune, memtune, and schedinfo"
+  targets:
+    # blkiotune
+    - check_io_weight
+    - check_device_read_iops_sec
+    - check_device_write_iops_sec
+    - check_device_read_bytes_sec
+    - check_device_write_bytes_sec
+    # memtune
+    - check_hard_limit
+    - check_soft_limit
+    - check_swap_hard_limit
+    # schedinfo
+    - check_cg_cpu_shares
+    - check_cg_vcpu_period
+    - check_cg_vcpu_quota
+    - check_cg_emulator_period
+    - check_cg_emulator_quota
+    - check_cg_global_period
+    - check_cg_global_quota
+  params:
+    guest_name: testvm
+    io_weight: 500
+    device_read_iops_sec: 1000
+    device_write_iops_sec: 1000
+    device_read_bytes_sec: 1048576
+    device_write_bytes_sec: 1048576
+    hard_limit: 1048576
+    soft_limit: 524288
+    swap_hard_limit: 2097152
+    cpu_shares: 1024
+    vcpu_period: 100000
+    vcpu_quota: -1
+    emulator_period: 100000
+    emulator_quota: -1
+    global_period: 100000
+    global_quota: -1
+  max_cases: 100
+  cleanup: true

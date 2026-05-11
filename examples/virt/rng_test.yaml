@@ -1,0 +1,18 @@
+modules:
+  - vm_basic.py
+  - rng.py
+
+suite:
+  name: rng
+  description: "RNG device lifecycle testing with multiple backend models"
+  targets: [verify_rng_in_vm, verify_no_rng_in_vm]
+  params:
+    guest_name: testvm
+    rng_model: virtio
+  param_choices:
+    - name: rng_backend_model
+      values: [random, egd, builtin]
+    - name: rng_source_mode
+      values: [server, client]
+  max_cases: 50
+  cleanup: true

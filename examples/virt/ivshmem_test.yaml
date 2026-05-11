@@ -1,0 +1,12 @@
+modules:
+  - vm_basic.py
+  - ivshmem.py
+
+suite:
+  name: ivshmem
+  description: "Inter-VM shared memory device testing"
+  targets: [check_ivshmem_in_guest, check_ivshmem_cmdline, check_ivshmem_audit]
+  params:
+    guest_name: testvm
+  max_cases: 50
+  cleanup: true

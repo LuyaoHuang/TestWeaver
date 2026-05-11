@@ -1,0 +1,23 @@
+modules:
+  - vm_basic.py
+  - mem_test.py
+
+suite:
+  name: mem_test
+  description: "Memory configuration testing (hugepages, memlock, memtune, memballoon)"
+  targets:
+    - check_hugepage_cmdline
+    - verify_mem_lock
+    - verify_nosharepage
+    - verify_memtune_cgroup
+    - verify_memtune_xml
+    - verify_setmem_in_guest
+    - check_period_in_xml
+  params:
+    guest_name: testvm
+    pagesize: "2048"
+    memtune: "1048576"
+    curmem: "524288"
+    mem_period: "10"
+  max_cases: 100
+  cleanup: true

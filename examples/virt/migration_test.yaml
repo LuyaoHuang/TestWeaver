@@ -1,0 +1,13 @@
+modules:
+  - vm_basic.py
+  - migration.py
+
+suite:
+  name: migration
+  description: "Live migration testing"
+  targets: [check_migrated_guest]
+  params:
+    guest_name: testvm
+    target_host: remote-host
+  max_cases: 50
+  cleanup: true

@@ -1,0 +1,52 @@
+modules:
+  - vm_basic.py
+  - blkdeviotune.py
+
+suite:
+  name: blkdeviotune
+  description: "Block device I/O tuning with mutual exclusion constraints"
+  targets:
+    - check_total_bytes_sec
+    - check_read_bytes_sec
+    - check_write_bytes_sec
+    - check_total_iops_sec
+    - check_read_iops_sec
+    - check_write_iops_sec
+    - check_total_bytes_sec_max
+    - check_read_bytes_sec_max
+    - check_write_bytes_sec_max
+    - check_total_iops_sec_max
+    - check_read_iops_sec_max
+    - check_write_iops_sec_max
+    - check_size_iops_sec
+    - check_group_name
+    - check_total_bytes_sec_max_length
+    - check_read_bytes_sec_max_length
+    - check_write_bytes_sec_max_length
+    - check_total_iops_sec_max_length
+    - check_read_iops_sec_max_length
+    - check_write_iops_sec_max_length
+  params:
+    guest_name: testvm
+    total_bytes_sec: 1048576
+    read_bytes_sec: 524288
+    write_bytes_sec: 524288
+    total_iops_sec: 1000
+    read_iops_sec: 500
+    write_iops_sec: 500
+    total_bytes_sec_max: 2097152
+    read_bytes_sec_max: 1048576
+    write_bytes_sec_max: 1048576
+    total_iops_sec_max: 2000
+    read_iops_sec_max: 1000
+    write_iops_sec_max: 1000
+    size_iops_sec: 512
+    group_name: default-group
+    total_bytes_sec_max_length: 10
+    read_bytes_sec_max_length: 10
+    write_bytes_sec_max_length: 10
+    total_iops_sec_max_length: 10
+    read_iops_sec_max_length: 10
+    write_iops_sec_max_length: 10
+  max_cases: 100
+  cleanup: true
