@@ -21,9 +21,14 @@ def load_module(path: str | Path) -> Any:
 
 def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
     results = []
+    verify_funcs: dict[str, Callable] = {}
     for name, obj in inspect.getmembers(module, inspect.isfunction):
         meta = getattr(obj, '_tw_meta', None)
         if meta is None:
+            continue
+        verify_target = meta.get('verify_for')
+        if verify_target is not None:
+            verify_funcs[verify_target] = obj
             continue
         grafts_raw = meta.get('grafts', [])
         grafts = [GraftDef(**g) for g in grafts_raw]
@@ -40,6 +45,9 @@ def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
             skip_when=meta.get('skip_when', []),
         )
         results.append((op, obj))
+    for op, _ in results:
+        if op.name in verify_funcs:
+            op.verify_callable = verify_funcs[op.name]
     return results
 
 

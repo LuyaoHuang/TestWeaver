@@ -2,12 +2,16 @@
 
 Define test operations in Python with decorators instead of YAML:
 
-    from testweaver import action, provides, requires, clears
+    from testweaver import action, provides, requires, clears, verify_for
 
     @action
     @provides('file.exists')
     def create_file(params):
         subprocess.run('echo hello > /tmp/test.txt', shell=True, check=True)
+
+    @verify_for('create_file')
+    def check_content(params):
+        subprocess.run('grep -q hello /tmp/test.txt', shell=True, check=True)
 
     @check
     @requires('file.exists')
@@ -117,6 +121,15 @@ def unless_param(param_name: str, value: Any) -> Callable:
         meta = _ensure_meta(func)
         state = f"params.{param_name}.{_safe_val(value)}"
         meta.setdefault('excludes', []).append(state)
+        return func
+    return decorator
+
+
+def verify_for(operation_name: str) -> Callable:
+    """Attach this function as a verify callback for the named operation."""
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        meta['verify_for'] = operation_name
         return func
     return decorator
 

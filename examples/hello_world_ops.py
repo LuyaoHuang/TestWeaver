@@ -1,6 +1,6 @@
 import subprocess
 
-from testweaver import action, check, cleanup, provides, requires, clears
+from testweaver import action, check, cleanup, provides, requires, clears, verify_for
 
 
 @action
@@ -13,12 +13,21 @@ def create_file(params):
     )
 
 
-@check
-@requires('file.exists')
+@verify_for('create_file')
 def check_content(params):
     """Verify file contains hello world"""
     subprocess.run(
         'grep -q "hello world" /tmp/testweaver_hello.txt',
+        shell=True, check=True,
+    )
+
+
+@check
+@requires('file.exists')
+def check_file_exists(params):
+    """Verify the file exists"""
+    subprocess.run(
+        'test -f /tmp/testweaver_hello.txt',
         shell=True, check=True,
     )
 

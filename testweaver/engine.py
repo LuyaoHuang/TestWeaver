@@ -162,6 +162,51 @@ def _run_observer(obs: TransitionObserver, params: dict[str, Any]) -> ObserverRe
         )
 
 
+def _run_verify(
+    operation: Operation,
+    params: dict[str, Any],
+    timeout: int = 300,
+) -> ObserverResult | None:
+    if operation.verify_callable is not None:
+        start = time.monotonic()
+        try:
+            operation.verify_callable(params)
+            duration = (time.monotonic() - start) * 1000
+            return ObserverResult(
+                observer_name=f"verify_{operation.name}",
+                status="pass",
+                duration_ms=round(duration, 2),
+            )
+        except Exception as e:
+            duration = (time.monotonic() - start) * 1000
+            return ObserverResult(
+                observer_name=f"verify_{operation.name}",
+                status="fail",
+                error=str(e),
+                duration_ms=round(duration, 2),
+            )
+    if operation.verify:
+        command = _substitute_params(operation.verify, params)
+        if not command.strip():
+            return None
+        start = time.monotonic()
+        returncode, stdout, stderr = _run_command(command, timeout)
+        duration = (time.monotonic() - start) * 1000
+        if returncode == 0:
+            return ObserverResult(
+                observer_name=f"verify_{operation.name}",
+                status="pass",
+                duration_ms=round(duration, 2),
+            )
+        return ObserverResult(
+            observer_name=f"verify_{operation.name}",
+            status="fail",
+            error=stderr or f"Exit code {returncode}",
+            duration_ms=round(duration, 2),
+        )
+    return None
+
+
 def _replan_remaining(
     current_env: Env,
     target_op: Operation,
@@ -289,6 +334,15 @@ def run_case(
         # Execute the step
         result, modifier = run_step(op, params, timeout)
         step_results.append(result)
+
+        # Run verify if step passed
+        if result.status == "pass":
+            verify_result = _run_verify(op, params, timeout)
+            if verify_result is not None:
+                result.verify_result = verify_result
+                if verify_result.status != "pass":
+                    case_status = verify_result.status
+                    break
 
         # Update env tracking
         new_env = apply_operation(current_env, op)

@@ -9,6 +9,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Decorator-based definitions** — define operations in Python with `@provides`, `@requires`, `@clears`, `@excludes`, `@graft`, `@cut`
 - **Hierarchical state model** — states are trees (`vm.config.tpm`), matching the original framework's `Env` design
 - **Automatic case generation** — dependency graph finds all valid paths to reach each test target
+- **Operation verification** — attach verify callbacks to operations with `@verify_for` or the `verify` YAML field; runs automatically after each successful step
 - **Parameter support** — two approaches for parameterized testing: parameter graph and parameter matrix
 - **Graph modifiers** — runtime modifiers (`EdgeGuard`, `TransientHook`, `TransitionObserver`) let operations influence future execution when the graph can't be fully static
 - **Structured JSON output** — every command outputs machine-readable JSON
@@ -28,7 +29,7 @@ Define operations in Python with decorators:
 
 ```python
 # my_ops.py
-from testweaver import action, check, cleanup, provides, requires, clears
+from testweaver import action, check, cleanup, provides, requires, clears, verify_for
 
 @action
 @provides('file.exists')
@@ -37,12 +38,18 @@ def create_file(params):
     import subprocess
     subprocess.run('echo "hello world" > /tmp/test.txt', shell=True, check=True)
 
-@check
-@requires('file.exists')
+@verify_for('create_file')
 def check_content(params):
-    """Verify file contains hello world"""
+    """Verify file contains hello world — runs automatically after create_file"""
     import subprocess
     subprocess.run('grep -q "hello world" /tmp/test.txt', shell=True, check=True)
+
+@check
+@requires('file.exists')
+def check_file_exists(params):
+    """Verify the file exists"""
+    import subprocess
+    subprocess.run('test -f /tmp/test.txt', shell=True, check=True)
 
 @cleanup
 @requires('file.exists')
@@ -61,7 +68,7 @@ modules:
 
 suite:
   name: "Hello World"
-  targets: [check_content]
+  targets: [check_file_exists]
   cleanup: true
 ```
 
@@ -79,11 +86,12 @@ operations:
     type: action
     provides: [file.exists]
     run: echo "hello world" > /tmp/hello.txt
+    verify: grep -q "hello world" /tmp/hello.txt
 
-  - name: check_content
+  - name: check_file_exists
     type: check
     requires: [file.exists]
-    run: grep -q "hello world" /tmp/hello.txt
+    run: test -f /tmp/hello.txt
 
   - name: remove_file
     type: cleanup
@@ -93,7 +101,7 @@ operations:
 
 suite:
   name: "Hello World"
-  targets: [check_content]
+  targets: [check_file_exists]
   cleanup: true
 ```
 
@@ -123,6 +131,7 @@ An operation is a single test step with dependency declarations:
 | `grafts` | Copy a subtree (`src` -> `tgt`) |
 | `cuts` | Remove an entire subtree |
 | `run` | Shell command to execute (YAML-only mode) |
+| `verify` | Shell command to verify the operation succeeded (runs after `run`) |
 
 ### Decorators
 
@@ -138,6 +147,7 @@ An operation is a single test step with dependency declarations:
 | `@excludes(*states)` | Declares states that must NOT be active |
 | `@graft(src, tgt)` | Copy subtree from src to tgt |
 | `@cut(*paths)` | Remove entire subtree |
+| `@verify_for(op_name)` | Attach as verify callback for the named operation |
 | `@when_param(name, value)` | Require a specific parameter value (param graph) |
 | `@unless_param(name, value)` | Exclude when a parameter value is set (param graph) |
 | `@skip_when(**conditions)` | Skip operation when conditions match (param matrix) |
@@ -210,6 +220,50 @@ def verify(params):
 ```
 
 This generates 2 test cases: one via `setup_a` and one via `setup_b`.
+
+## Operation Verification
+
+Operations can have a verify callback that runs automatically after the operation succeeds. This keeps the dependency graph clean — verifications aren't state transitions, so they shouldn't be graph nodes.
+
+### Python Module
+
+Use `@verify_for` to attach a verify function to an operation:
+
+```python
+from testweaver import action, provides, verify_for
+
+@action
+@provides('rng.present')
+def add_rng(params):
+    print(f"virsh attach-device {params.get('guest_name')} rng.xml")
+
+@verify_for('add_rng')
+def verify_rng_in_vm(params):
+    """Runs automatically after add_rng succeeds"""
+    print(f"ssh {params.get('guest_name')} ls /dev/hwrng")
+```
+
+### YAML
+
+Use the `verify` field for a shell command that runs after the operation:
+
+```yaml
+operations:
+  - name: add_rng
+    type: action
+    provides: [rng.present]
+    run: virsh attach-device $guest_name rng.xml
+    verify: ssh $guest_name ls /dev/hwrng
+```
+
+### Behavior
+
+- Verify runs only when the operation passes — skipped on step failure
+- If verify fails, the case is marked as failed and cleanup runs
+- Verify results appear in `StepResult.verify_result`
+- Parameters are substituted in YAML verify commands just like `run`
+
+See [docs/examples.md](docs/examples.md#operation-verification) for more examples.
 
 ## Graph Modifiers
 

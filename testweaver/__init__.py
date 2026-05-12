@@ -15,6 +15,7 @@ from testweaver.decorators import (
     setup,
     skip_when,
     unless_param,
+    verify_for,
     when_param,
 )
 from testweaver.modifiers import EdgeGuard, TransientHook, TransitionObserver

@@ -60,7 +60,9 @@ class Operation(BaseModel):
     params: list[ParamDef] = Field(default_factory=list)
     skip_when: list[dict[str, Any]] = Field(default_factory=list)
     run: str = ""
+    verify: str = ""
     callable: Callable | None = Field(default=None, exclude=True)
+    verify_callable: Callable | None = Field(default=None, exclude=True)
     param_provider: str | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
@@ -160,6 +162,7 @@ class StepResult(BaseModel):
     modifier_type: str | None = None
     modifier_detail: str | None = None
     injected: bool = False
+    verify_result: ObserverResult | None = None
     observer_results: list[ObserverResult] = Field(default_factory=list)
 
 
