@@ -10,6 +10,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Hierarchical state model** — states are trees (`vm.config.tpm`), matching the original framework's `Env` design
 - **Automatic case generation** — dependency graph finds all valid paths to reach each test target
 - **Parameter support** — two approaches for parameterized testing: parameter graph and parameter matrix
+- **Graph modifiers** — runtime modifiers (`EdgeGuard`, `TransientHook`, `TransitionObserver`) let operations influence future execution when the graph can't be fully static
 - **Structured JSON output** — every command outputs machine-readable JSON
 - **Built-in analysis** — failure detection, debug suggestions, and performance summaries
 
@@ -210,127 +211,54 @@ def verify(params):
 
 This generates 2 test cases: one via `setup_a` and one via `setup_b`.
 
+## Graph Modifiers
+
+In real test environments, a step's execution can change what future steps are valid. Graph modifiers let callable operations return objects that influence execution flow at runtime.
+
+| Modifier | Purpose | Example |
+|----------|---------|---------|
+| `EdgeGuard` | Block a future operation, trigger replanning | Hugepages disabled — block VM start |
+| `TransientHook` | Inject a one-shot step before a future op | Restart libvirtd before next memtune |
+| `TransitionObserver` | Run verification after matching operations | Check audit logs after device attach/detach |
+
+```python
+from testweaver import action, provides, EdgeGuard
+
+@action
+@provides('hugepage_config')
+def configure_hugepages(params):
+    if params.get('hugetlbfs_mount') == '':
+        return EdgeGuard(blocked_op='start_vm', reason='hugepages disabled')
+```
+
+When the runner hits a blocked step, it queries the graph for an alternative path. The `CaseResult` includes `replanned=True` when this happens.
+
+See [docs/examples.md](docs/examples.md#graph-modifiers) for full documentation and examples of all three modifier types.
+
 ## Parameter Support
 
-TestWeaver offers two approaches for parameterized testing.
+TestWeaver supports two approaches for parameterized testing:
 
-### Approach 1: Parameter Graph (`param_choices`)
-
-Parameter values become states in the dependency graph. The graph engine naturally discovers all valid paths for each parameter combination. Use this when parameters change *which operations are available*.
-
-```python
-# vtpm_ops.py
-from testweaver import action, check, provides, requires, excludes, when_param
-
-@action
-@when_param('tpm_backend', 'emulator')
-@provides('swtpm_installed')
-@excludes('swtpm_installed')
-def install_swtpm(params):
-    """Only runs when tpm_backend=emulator"""
-    print("yum install swtpm swtpm-tools -y")
-
-@action
-@requires('vm.config')
-@provides('vm.config.tpm')
-def add_tpm(params):
-    print(f"Adding TPM to {params.get('guest_name')}")
-
-@check
-@requires('vm.active.tpm')
-def verify_tpm(params):
-    print("Checking /dev/tpm0 inside guest")
-```
-
-```yaml
-modules:
-  - vtpm_ops.py
-
-suite:
-  name: vtpm
-  targets: [verify_tpm]
-  param_choices:
-    - name: tpm_backend
-      values: [emulator, passthrough]
-```
-
-The graph generates different test paths: emulator paths go through `install_swtpm`, passthrough paths skip it.
-
-### Approach 2: Parameter Matrix (`param_matrix`)
-
-Defines parameter axes and constraint rules. Generates the Cartesian product of values, filters invalid combinations, and runs each valid combination through the graph. Use this when parameters are *data values* that don't change graph structure.
-
-```yaml
-modules:
-  - schedinfo_ops.py
-
-suite:
-  name: schedinfo
-  targets: [check_cpu_shares]
-  params:
-    guest_name: testvm
-  param_matrix:
-    axes:
-      - name: cpu_shares
-        values: [512, 1024, 2048]
-      - name: vcpu_count
-        values: [1, 2, 4]
-    constraints:
-      - when: {cpu_shares: 2048, vcpu_count: 1}
-        exclude: true
-        reason: "Invalid combo: high shares with single vCPU"
-```
-
-You can also use the `@skip_when` decorator on operations:
-
-```python
-@action
-@skip_when(vcpu_count=1)
-@requires('vm.active')
-@provides('vm.schedinfo.numa_balanced')
-def enable_numa_balancing(params):
-    """Skip for single-vCPU guests"""
-    pass
-```
-
-### CLI Parameter Override
-
-Override or add parameters from the command line:
+- **Parameter Graph** (`param_choices`) — parameter values become states in the graph; use when parameters change which operations are available
+- **Parameter Matrix** (`param_matrix`) — Cartesian product of axes with constraint filtering; use when parameters are data values
 
 ```bash
-testweaver run my_test.yaml -p guest_name=testvm -p timeout=60
-testweaver matrix my_test.yaml --format text   # Preview parameter combinations
+testweaver run my_test.yaml -p guest_name=testvm     # CLI override
+testweaver matrix my_test.yaml --format text          # Preview combinations
 ```
+
+See [docs/examples.md](docs/examples.md#parameter-support) for full examples of both approaches.
 
 ## Virtualization Examples
 
-The `examples/virt/` directory contains mock implementations of libvirt/QEMU test operations, ported from depend-test-framework:
-
-| Module | Operations | Description |
-|--------|-----------|-------------|
-| `vm_basic.py` | 4 | Guest lifecycle: define, start, destroy, undefine |
-| `vtpm.py` | 11 | vTPM device management with param_choices (emulator vs passthrough) |
-| `save_restore.py` | 8 | Save/restore using graft+cut migrate pattern |
-| `vdisk.py` | 2 | Virtual disk attach and verify |
-| `backing_chain.py` | 6 | Snapshot management with block pull/commit |
-| `schedinfo.py` | 7 | CPU scheduling parameters |
-| `numa.py` | 1 | NUMA topology configuration |
-| `mem_device.py` | 4 | Memory hotplug |
-
-Try them:
+The `examples/virt/` directory contains mock implementations of libvirt/QEMU test operations ported from depend-test-framework (VM lifecycle, vTPM, save/restore, snapshots, memory hotplug, CPU scheduling, and more).
 
 ```bash
-testweaver generate examples/virt/vdisk_test.yaml --format text
-testweaver run examples/virt/backing_chain_test.yaml --format text
-testweaver graph examples/virt/save_restore_test.yaml --format text
-
-# Parameter graph: emulator vs passthrough generate different test paths
 testweaver generate examples/virt/vtpm_test.yaml --format text
-
-# Parameter matrix: test cpu_shares with 3 values
-testweaver generate examples/virt/schedinfo_test.yaml --format text
-testweaver matrix examples/virt/schedinfo_test.yaml --format text
+testweaver run examples/virt/backing_chain_test.yaml --format text
 ```
+
+See [docs/examples.md](docs/examples.md#virtualization-examples) for the full list.
 
 ## CLI Reference
 

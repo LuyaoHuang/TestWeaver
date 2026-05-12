@@ -90,10 +90,13 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
         overrides = _parse_param_overrides(param)
         definition.suite.params.update(overrides)
 
-    cases = generate_cases(definition)
+    from .graph import build_graph
+    param_choices = definition.suite.param_choices or None
+    graph = build_graph(definition.operations, param_choices=param_choices)
+    cases = generate_cases(definition, graph)
 
     click.echo(f"Running {len(cases)} test case(s)...", err=True)
-    results = run_all(cases, definition, timeout)
+    results = run_all(cases, definition, timeout, graph=graph)
     summary = summarize_run(results)
 
     if fmt == "json":

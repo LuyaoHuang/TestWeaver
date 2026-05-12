@@ -143,6 +143,13 @@ class TestDefinition(BaseModel):
         return self
 
 
+class ObserverResult(BaseModel):
+    observer_name: str
+    status: Literal["pass", "fail", "error"] = "pass"
+    error: str | None = None
+    duration_ms: float = 0.0
+
+
 class StepResult(BaseModel):
     operation: str
     status: Literal["pass", "fail", "skip", "error"] = "pass"
@@ -150,6 +157,10 @@ class StepResult(BaseModel):
     stdout: str = ""
     stderr: str = ""
     error: str | None = None
+    modifier_type: str | None = None
+    modifier_detail: str | None = None
+    injected: bool = False
+    observer_results: list[ObserverResult] = Field(default_factory=list)
 
 
 class CaseResult(BaseModel):
@@ -157,6 +168,8 @@ class CaseResult(BaseModel):
     steps: list[StepResult] = Field(default_factory=list)
     status: Literal["pass", "fail", "error"] = "pass"
     duration_ms: float = 0.0
+    replanned: bool = False
+    replan_reason: str | None = None
 
 
 class RunSummary(BaseModel):

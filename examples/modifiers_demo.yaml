@@ -1,0 +1,19 @@
+modules:
+  - modifiers_demo.py
+
+suite:
+  name: "Graph Modifiers Demo"
+  description: >
+    Demonstrates EdgeGuard, TransientHook, and TransitionObserver
+    in a simplified VM testing scenario.
+  targets:
+    - check_vm_running
+    - check_memtune
+    - check_mem_device
+  params:
+    guest_name: testvm
+    hugetlbfs_mount: /dev/hugepages
+    hard_limit: 1048576
+    restart_libvirtd: false
+  max_cases: 20
+  cleanup: true

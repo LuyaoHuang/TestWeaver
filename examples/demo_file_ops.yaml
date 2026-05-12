@@ -1,0 +1,10 @@
+modules:
+  - demo_file_ops.py
+
+suite:
+  name: demo_file_ops
+  description: "Demo: 3 ways to create a file, 1 test to read it = 3 auto-generated test cases"
+  targets: [test_read_file]
+  params:
+    file_path: /tmp/tw_test.txt
+  cleanup: true

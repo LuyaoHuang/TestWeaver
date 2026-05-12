@@ -18,7 +18,7 @@ def _safe_val(value: Any) -> str:
     return str(value).replace('.', '_')
 
 
-def _apply_operation(env: Env, op: Operation) -> Env | None:
+def apply_operation(env: Env, op: Operation) -> Env | None:
     for state in op.requires:
         if not env.is_active(state):
             return None
@@ -110,7 +110,7 @@ def build_graph(
             if op.type == "check":
                 continue
 
-            new_env = _apply_operation(current, op)
+            new_env = apply_operation(current, op)
             if new_env is None or new_env == current:
                 continue
 
@@ -183,7 +183,7 @@ def _find_cleanup_path(
     while queue:
         current = queue.pop(0)
         for op in cleanup_ops:
-            new_env = _apply_operation(current, op)
+            new_env = apply_operation(current, op)
             if new_env is None or new_env == current:
                 continue
             if new_env not in cleanup_graph:
@@ -303,7 +303,7 @@ def _generate_cases_single(
 
                     cleanup_steps = []
                     if definition.suite.cleanup:
-                        final_state = _apply_operation(target_node, target_op)
+                        final_state = apply_operation(target_node, target_op)
                         if final_state is None:
                             final_state = target_node
                         cleanup_steps = _find_cleanup_path(
