@@ -401,8 +401,15 @@ def run_case(
     if case_status != "pass" or cleanup_steps:
         for cleanup_name in cleanup_steps:
             cleanup_op = ops_by_name.get(cleanup_name)
+            cleanup_params = dict(params)
+            if cleanup_op is None and '[' in cleanup_name:
+                base, inst_params = _parse_instance_params(cleanup_name)
+                cleanup_op = ops_by_name.get(base)
+                if cleanup_op is not None:
+                    cleanup_op = _render_state_paths(cleanup_op, inst_params)
+                    cleanup_params.update(inst_params)
             if cleanup_op:
-                cleanup_result, _ = run_step(cleanup_op, params, timeout)
+                cleanup_result, _ = run_step(cleanup_op, cleanup_params, timeout)
                 step_results.append(cleanup_result)
 
     duration = (time.monotonic() - start) * 1000
