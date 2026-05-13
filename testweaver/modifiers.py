@@ -49,4 +49,5 @@ class TransitionObserver:
     reason: str = ""
 
 
+#: Union type for all graph modifier kinds.
 GraphModifier = EdgeGuard | TransientHook | TransitionObserver

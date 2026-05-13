@@ -1,20 +1,22 @@
 class TestWeaverError(Exception):
-    pass
+    """Base exception for all TestWeaver errors."""
 
 
 class SchemaError(TestWeaverError):
-    pass
+    """Raised when a test definition fails schema validation."""
 
 
 class GraphError(TestWeaverError):
-    pass
+    """Raised when graph construction or traversal fails."""
 
 
 class ExecutionError(TestWeaverError):
-    pass
+    """Raised when test step execution fails unexpectedly."""
 
 
 class UnreachableTargetError(GraphError):
+    """Raised when a target operation cannot be reached from the initial state."""
+
     def __init__(self, target: str, available_states: set[str]):
         self.target = target
         self.available_states = available_states

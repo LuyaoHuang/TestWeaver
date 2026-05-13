@@ -10,6 +10,7 @@ def _constraint_matches(
     constraint: ParamConstraint,
     combination: dict[str, Any],
 ) -> bool:
+    """Check whether a constraint's when-clause matches a parameter combination."""
     for key, expected in constraint.when.items():
         actual = combination.get(key)
         if isinstance(expected, list):
@@ -22,6 +23,17 @@ def _constraint_matches(
 
 
 def expand_matrix(matrix: ParamMatrix) -> list[dict[str, Any]]:
+    """Expand a parameter matrix into all valid combinations.
+
+    Computes the Cartesian product of all axes, then removes any
+    combinations excluded by constraints.
+
+    Args:
+        matrix: Parameter matrix with axes and optional constraints.
+
+    Returns:
+        List of parameter dicts, one per valid combination.
+    """
     if not matrix.axes:
         return [{}]
 
@@ -46,6 +58,16 @@ def get_skip_ops(
     constraints: list[ParamConstraint],
     operations: list[Operation] | None = None,
 ) -> set[str]:
+    """Determine which operations to skip for a given parameter combination.
+
+    Args:
+        combination: Current parameter values.
+        constraints: Matrix-level constraints with ``skip_ops``.
+        operations: Operations with per-operation ``skip_when`` rules.
+
+    Returns:
+        Set of operation names to skip.
+    """
     skip: set[str] = set()
     for c in constraints:
         if _constraint_matches(c, combination):

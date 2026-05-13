@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ParamDef(BaseModel):
+    """Definition of a single test parameter."""
+
     name: str
     type: Literal["string", "integer", "float", "boolean", "list", "dict"] = "string"
     description: str = ""
@@ -17,11 +19,15 @@ class ParamDef(BaseModel):
 
 
 class GraftDef(BaseModel):
+    """Source-to-target mapping for a state graft operation."""
+
     src: str
     tgt: str
 
 
 class ParamChoice(BaseModel):
+    """Named set of parameter values for combinatorial test generation."""
+
     name: str
     values: list[Any]
     description: str = ""
@@ -29,12 +35,16 @@ class ParamChoice(BaseModel):
 
 
 class ParamAxis(BaseModel):
+    """Single axis of a parameter matrix."""
+
     name: str
     values: list[Any]
     description: str = ""
 
 
 class ParamConstraint(BaseModel):
+    """Constraint that excludes or skips operations for specific parameter values."""
+
     when: dict[str, Any]
     skip_ops: list[str] = Field(default_factory=list)
     exclude: bool = False
@@ -42,11 +52,25 @@ class ParamConstraint(BaseModel):
 
 
 class ParamMatrix(BaseModel):
+    """Multi-axis parameter matrix with optional constraints."""
+
     axes: list[ParamAxis] = Field(default_factory=list)
     constraints: list[ParamConstraint] = Field(default_factory=list)
 
 
 class Operation(BaseModel):
+    """A single test operation with state dependencies and an executable action.
+
+    Attributes:
+        name: Unique operation identifier.
+        type: Role in the test graph (action, check, setup, or cleanup).
+        provides: States activated after successful execution.
+        requires: States that must be active before execution.
+        clears: States deactivated after execution.
+        excludes: States that must not be active for this operation to run.
+        callable: Python function to execute (set when loaded from a module).
+    """
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str
@@ -69,6 +93,7 @@ class Operation(BaseModel):
 
     @model_validator(mode="after")
     def check_cleanup_has_clears(self) -> Operation:
+        """Ensure cleanup operations declare at least one clears or cuts entry."""
         if self.type == "cleanup" and not self.clears and not self.cuts:
             raise ValueError(
                 f"Operation '{self.name}' is type 'cleanup' but has no 'clears' or 'cuts' entries"
@@ -77,6 +102,8 @@ class Operation(BaseModel):
 
 
 class TestSuite(BaseModel):
+    """Configuration for test case generation."""
+
     name: str
     description: str = ""
     params: dict[str, Any] = Field(default_factory=dict)
@@ -89,12 +116,19 @@ class TestSuite(BaseModel):
 
 
 class TestDefinition(BaseModel):
+    """Complete test definition: operations, modules, and suite configuration.
+
+    Validators enforce referential integrity between operations and suite
+    targets, and reject invalid configurations like dual param modes.
+    """
+
     operations: list[Operation] = Field(default_factory=list)
     modules: list[str] = Field(default_factory=list)
     suite: TestSuite
 
     @model_validator(mode="after")
     def validate_targets_exist(self) -> TestDefinition:
+        """Ensure all suite targets reference defined operations."""
         op_names = {op.name for op in self.operations}
         for target in self.suite.targets:
             if target not in op_names:
@@ -105,6 +139,7 @@ class TestDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_state_references(self) -> TestDefinition:
+        """Ensure all required states are reachable from some provider."""
         all_provided: set[str] = set()
         all_cleared: set[str] = set()
         all_grafts: list[tuple[str, str]] = []
@@ -141,6 +176,7 @@ class TestDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_no_dual_param_modes(self) -> TestDefinition:
+        """Ensure param_choices and param_matrix are not used simultaneously."""
         has_choices = bool(self.suite.param_choices)
         has_matrix = self.suite.param_matrix and bool(self.suite.param_matrix.axes)
         if has_choices and has_matrix:
@@ -151,6 +187,7 @@ class TestDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_no_wildcards_in_writes(self) -> TestDefinition:
+        """Ensure wildcards are not used in write paths (provides/clears/cuts/grafts)."""
         for op in self.operations:
             for path in op.provides + op.clears + op.cuts:
                 if '*' in path:
@@ -168,6 +205,8 @@ class TestDefinition(BaseModel):
 
 
 class ObserverResult(BaseModel):
+    """Result from a transition observer or verify callback."""
+
     observer_name: str
     status: Literal["pass", "fail", "error"] = "pass"
     error: str | None = None
@@ -175,6 +214,8 @@ class ObserverResult(BaseModel):
 
 
 class StepResult(BaseModel):
+    """Execution result for a single test step."""
+
     operation: str
     status: Literal["pass", "fail", "skip", "error"] = "pass"
     duration_ms: float = 0.0
@@ -189,6 +230,8 @@ class StepResult(BaseModel):
 
 
 class CaseResult(BaseModel):
+    """Aggregate result for a single test case."""
+
     case_id: str
     steps: list[StepResult] = Field(default_factory=list)
     status: Literal["pass", "fail", "error"] = "pass"
@@ -198,6 +241,8 @@ class CaseResult(BaseModel):
 
 
 class RunSummary(BaseModel):
+    """Summary statistics for a complete test run."""
+
     total: int = 0
     passed: int = 0
     failed: int = 0
@@ -208,6 +253,8 @@ class RunSummary(BaseModel):
 
 
 class FailureDetail(BaseModel):
+    """Detailed information about a single test failure."""
+
     case_id: str
     failed_step: str
     step_index: int
@@ -218,6 +265,8 @@ class FailureDetail(BaseModel):
 
 
 class DebugSuggestion(BaseModel):
+    """Debugging suggestion generated from a failure detail."""
+
     failure: FailureDetail
     likely_cause: str = ""
     suggested_operations: list[str] = Field(default_factory=list)
@@ -225,6 +274,8 @@ class DebugSuggestion(BaseModel):
 
 
 class TestCase(BaseModel):
+    """A generated test case with steps, target, and parameters."""
+
     case_id: str
     steps: list[str]
     target: str
@@ -234,6 +285,7 @@ class TestCase(BaseModel):
 
 
 def _load_definition_from_module(path: Path) -> TestDefinition:
+    """Load a test definition from a single Python module file."""
     from .loader import load_module, extract_operations
     module = load_module(path)
     op_pairs = extract_operations(module)
@@ -254,6 +306,7 @@ def _load_definition_from_module(path: Path) -> TestDefinition:
 
 
 def _state_is_reachable(required: str, all_states: set[str]) -> bool:
+    """Check whether a required state is provided by any operation."""
     if required in all_states:
         return True
     # Hierarchical: requiring 'a.b' is satisfied if 'a.b.c' is provided
@@ -262,6 +315,17 @@ def _state_is_reachable(required: str, all_states: set[str]) -> bool:
 
 
 def load_definition(path: str | Path) -> TestDefinition:
+    """Load a test definition from a YAML file or Python module.
+
+    Args:
+        path: Path to a ``.yaml`` or ``.py`` definition file.
+
+    Returns:
+        Parsed and validated test definition.
+
+    Raises:
+        SchemaError: If the definition fails validation.
+    """
     path = Path(path)
 
     if path.suffix == '.py':
@@ -293,7 +357,19 @@ def load_definition(path: str | Path) -> TestDefinition:
     return TestDefinition.model_validate(data)
 
 
-def export_json_schema(model_type: str = "definition") -> dict:
+def export_json_schema(model_type: str = "definition") -> dict[str, Any]:
+    """Export a Pydantic model's JSON Schema.
+
+    Args:
+        model_type: One of ``"definition"``, ``"results"``, ``"summary"``,
+            or ``"test_case"``.
+
+    Returns:
+        JSON Schema dict for the requested model.
+
+    Raises:
+        ValueError: If *model_type* is not recognized.
+    """
     schemas = {
         "definition": TestDefinition,
         "results": CaseResult,
@@ -307,8 +383,10 @@ def export_json_schema(model_type: str = "definition") -> dict:
 
 
 def dump_json(obj: BaseModel) -> str:
+    """Serialize a Pydantic model to a JSON string."""
     return obj.model_dump_json(indent=2)
 
 
-def dump_dict(obj: BaseModel) -> dict:
+def dump_dict(obj: BaseModel) -> dict[str, Any]:
+    """Serialize a Pydantic model to a plain dict."""
     return obj.model_dump()

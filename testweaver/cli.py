@@ -13,8 +13,9 @@ from .graph import build_graph, explain_graph, generate_cases
 from .schema import CaseResult, TestDefinition, export_json_schema, load_definition
 
 
-def _parse_param_overrides(params: tuple[str, ...]) -> dict:
-    result = {}
+def _parse_param_overrides(params: tuple[str, ...]) -> dict[str, str]:
+    """Parse ``key=value`` parameter strings into a dict."""
+    result: dict[str, str] = {}
     for p in params:
         if '=' not in p:
             raise click.BadParameter(f"Invalid param format '{p}', expected key=value")
@@ -25,14 +26,14 @@ def _parse_param_overrides(params: tuple[str, ...]) -> dict:
 
 @click.group()
 @click.version_option(version=__version__)
-def main():
+def main() -> None:
     """TestWeaver: AI-native test case generation framework."""
     pass
 
 
 @main.command()
 @click.argument("path", type=click.Path(exists=True))
-def validate(path: str):
+def validate(path: str) -> None:
     """Validate a test definition file."""
     try:
         definition = load_definition(path)
@@ -53,7 +54,7 @@ def validate(path: str):
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
 @click.option("--param", "-p", multiple=True, help="Override parameter: key=value")
-def generate(path: str, fmt: str, param: tuple[str, ...]):
+def generate(path: str, fmt: str, param: tuple[str, ...]) -> None:
     """Generate test cases from a definition file."""
     definition = load_definition(path)
     if param:
@@ -83,7 +84,7 @@ def generate(path: str, fmt: str, param: tuple[str, ...]):
 @click.option("--timeout", default=300, help="Per-step timeout in seconds")
 @click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
 @click.option("--param", "-p", multiple=True, help="Override parameter: key=value")
-def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...]):
+def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...]) -> None:
     """Run test cases from a definition file."""
     definition = load_definition(path)
     if param:
@@ -122,7 +123,7 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--definition", "-d", type=click.Path(exists=True),
               help="Original definition file for debug suggestions")
-def analyze(path: str, definition: str | None):
+def analyze(path: str, definition: str | None) -> None:
     """Analyze test results from a JSON file."""
     data = json.loads(Path(path).read_text())
 
@@ -152,7 +153,7 @@ def analyze(path: str, definition: str | None):
 @main.command("graph")
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
-def show_graph(path: str, fmt: str):
+def show_graph(path: str, fmt: str) -> None:
     """Show the dependency graph for a definition file."""
     definition = load_definition(path)
     info = explain_graph(definition)
@@ -186,7 +187,7 @@ def show_graph(path: str, fmt: str):
 @main.command("matrix")
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
-def show_matrix(path: str, fmt: str):
+def show_matrix(path: str, fmt: str) -> None:
     """Show parameter combinations for a definition."""
     definition = load_definition(path)
 
@@ -216,7 +217,7 @@ def show_matrix(path: str, fmt: str):
 @click.option("--type", "schema_type",
               type=click.Choice(["definition", "results", "summary", "test_case"]),
               default="definition")
-def show_schema(schema_type: str):
+def show_schema(schema_type: str) -> None:
     """Export JSON Schema for AI agents."""
     schema = export_json_schema(schema_type)
     click.echo(json.dumps(schema, indent=2))

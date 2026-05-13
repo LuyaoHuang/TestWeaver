@@ -12,6 +12,14 @@ from .schema import (
 
 
 def summarize_run(results: list[CaseResult]) -> RunSummary:
+    """Compute summary statistics from a list of case results.
+
+    Args:
+        results: Completed case results from a test run.
+
+    Returns:
+        Aggregated counts, timing, failure patterns, and slowest steps.
+    """
     total = len(results)
     passed = sum(1 for r in results if r.status == "pass")
     failed = sum(1 for r in results if r.status == "fail")
@@ -51,6 +59,15 @@ def find_failures(
     results: list[CaseResult],
     operations: list[Operation] | None = None,
 ) -> list[FailureDetail]:
+    """Extract failure details from case results.
+
+    Args:
+        results: Completed case results.
+        operations: If provided, enriches failures with state info.
+
+    Returns:
+        One FailureDetail per failed case (first failing step only).
+    """
     ops_by_name = {op.name: op for op in operations} if operations else {}
     failures = []
 
@@ -78,6 +95,15 @@ def suggest_debug(
     failure: FailureDetail,
     operations: list[Operation],
 ) -> DebugSuggestion:
+    """Generate a debugging suggestion for a single failure.
+
+    Args:
+        failure: The failure to diagnose.
+        operations: All operations in the test definition.
+
+    Returns:
+        A suggestion with likely cause and relevant provider operations.
+    """
     ops_by_name = {op.name: op for op in operations}
     failed_op = ops_by_name.get(failure.failed_step)
 

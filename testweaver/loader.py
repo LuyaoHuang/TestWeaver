@@ -10,6 +10,17 @@ from .schema import GraftDef, Operation
 
 
 def load_module(path: str | Path) -> Any:
+    """Load a Python module from a file path.
+
+    Args:
+        path: Filesystem path to a ``.py`` file.
+
+    Returns:
+        The loaded module object.
+
+    Raises:
+        ImportError: If the module cannot be loaded.
+    """
     path = Path(path).resolve()
     spec = importlib.util.spec_from_file_location(path.stem, path)
     if spec is None or spec.loader is None:
@@ -20,6 +31,17 @@ def load_module(path: str | Path) -> Any:
 
 
 def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
+    """Extract Operation definitions from a loaded module.
+
+    Scans all functions in *module* for ``_tw_meta`` attributes set by
+    TestWeaver decorators and converts them into Operation models.
+
+    Args:
+        module: A loaded Python module.
+
+    Returns:
+        List of ``(Operation, callable)`` pairs.
+    """
     results = []
     verify_funcs: dict[str, Callable] = {}
     for name, obj in inspect.getmembers(module, inspect.isfunction):
@@ -55,6 +77,15 @@ def load_operations_from_modules(
     module_paths: list[str],
     base_dir: Path | None = None,
 ) -> list[tuple[Operation, Callable | None]]:
+    """Load and extract operations from multiple module files.
+
+    Args:
+        module_paths: List of paths to Python modules.
+        base_dir: Base directory for resolving relative paths.
+
+    Returns:
+        Combined list of ``(Operation, callable)`` pairs from all modules.
+    """
     all_ops = []
     for mod_path in module_paths:
         p = Path(mod_path)

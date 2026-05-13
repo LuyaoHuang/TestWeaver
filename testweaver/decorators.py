@@ -20,16 +20,18 @@ Define test operations in Python with decorators instead of YAML:
 """
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 
-def _ensure_meta(func: Callable) -> dict:
+def _ensure_meta(func: Callable) -> dict[str, Any]:
+    """Get or create the ``_tw_meta`` metadata dict on a function."""
     if not hasattr(func, '_tw_meta'):
         func._tw_meta = {}
     return func._tw_meta
 
 
 def provides(*states: str) -> Callable:
+    """Mark states that this operation activates on success."""
     def decorator(func: Callable) -> Callable:
         meta = _ensure_meta(func)
         meta.setdefault('provides', []).extend(states)
@@ -38,6 +40,7 @@ def provides(*states: str) -> Callable:
 
 
 def requires(*states: str) -> Callable:
+    """Mark states that must be active before this operation runs."""
     def decorator(func: Callable) -> Callable:
         meta = _ensure_meta(func)
         meta.setdefault('requires', []).extend(states)
@@ -46,6 +49,7 @@ def requires(*states: str) -> Callable:
 
 
 def clears(*states: str) -> Callable:
+    """Mark states that this operation deactivates."""
     def decorator(func: Callable) -> Callable:
         meta = _ensure_meta(func)
         meta.setdefault('clears', []).extend(states)
@@ -54,6 +58,7 @@ def clears(*states: str) -> Callable:
 
 
 def excludes(*states: str) -> Callable:
+    """Mark states that must not be active for this operation to run."""
     def decorator(func: Callable) -> Callable:
         meta = _ensure_meta(func)
         meta.setdefault('excludes', []).extend(states)
@@ -62,6 +67,7 @@ def excludes(*states: str) -> Callable:
 
 
 def graft(src: str, tgt: str) -> Callable:
+    """Copy state subtree from *src* to *tgt* after execution."""
     def decorator(func: Callable) -> Callable:
         meta = _ensure_meta(func)
         meta.setdefault('grafts', []).append({'src': src, 'tgt': tgt})
@@ -70,6 +76,7 @@ def graft(src: str, tgt: str) -> Callable:
 
 
 def cut(*paths: str) -> Callable:
+    """Remove state subtrees at the given paths after execution."""
     def decorator(func: Callable) -> Callable:
         meta = _ensure_meta(func)
         meta.setdefault('cuts', []).extend(paths)
@@ -78,6 +85,7 @@ def cut(*paths: str) -> Callable:
 
 
 def _type_decorator(op_type: str) -> Callable:
+    """Create a decorator that sets the operation type."""
     def decorator(func: Callable) -> Callable:
         meta = _ensure_meta(func)
         meta['type'] = op_type
@@ -86,18 +94,22 @@ def _type_decorator(op_type: str) -> Callable:
 
 
 def action(func: Callable) -> Callable:
+    """Mark a function as an action operation."""
     return _type_decorator('action')(func)
 
 
 def check(func: Callable) -> Callable:
+    """Mark a function as a check (target) operation."""
     return _type_decorator('check')(func)
 
 
 def setup(func: Callable) -> Callable:
+    """Mark a function as a setup operation."""
     return _type_decorator('setup')(func)
 
 
 def cleanup(func: Callable) -> Callable:
+    """Mark a function as a cleanup operation."""
     return _type_decorator('cleanup')(func)
 
 

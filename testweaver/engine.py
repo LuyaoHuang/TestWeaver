@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 import time
 from string import Template
-from typing import Any
+from typing import Any, Callable
 
 import networkx as nx
 
@@ -21,11 +21,13 @@ from .schema import (
 
 
 def _substitute_params(command: str, params: dict[str, Any]) -> str:
+    """Substitute parameter placeholders in a shell command string."""
     str_params = {k: str(v) for k, v in params.items()}
     return Template(command).safe_substitute(str_params)
 
 
 def _run_command(command: str, timeout: int = 300) -> tuple[int, str, str]:
+    """Execute a shell command and return exit code, stdout, and stderr."""
     try:
         result = subprocess.run(
             command,
@@ -42,9 +44,10 @@ def _run_command(command: str, timeout: int = 300) -> tuple[int, str, str]:
 
 
 def _run_callable(
-    func: Any,
+    func: Callable[..., Any],
     params: dict[str, Any],
 ) -> tuple[bool, str, str, Any]:
+    """Call a Python callable with params and capture success, output, and return value."""
     try:
         ret = func(params)
         return True, "", "", ret
@@ -53,12 +56,14 @@ def _run_callable(
 
 
 def _extract_modifier(value: Any) -> GraphModifier | None:
+    """Extract a GraphModifier from a callable's return value, if present."""
     if isinstance(value, (EdgeGuard, TransientHook, TransitionObserver)):
         return value
     return None
 
 
 def _parse_instance_params(step_name: str) -> tuple[str, dict[str, Any]]:
+    """Parse instance parameters from a step name like ``'op[k=v]'``."""
     if '[' not in step_name:
         return step_name, {}
     base, rest = step_name.split('[', 1)
@@ -75,6 +80,20 @@ def run_step(
     params: dict[str, Any],
     timeout: int = 300,
 ) -> tuple[StepResult, GraphModifier | None]:
+    """Execute a single test step and return its result.
+
+    Runs the operation's callable (if set) or shell command, captures
+    timing and output, and extracts any returned graph modifier.
+
+    Args:
+        operation: The operation to execute.
+        params: Parameter dict passed to the callable or substituted
+            into the shell command.
+        timeout: Maximum execution time in seconds for shell commands.
+
+    Returns:
+        A tuple of ``(StepResult, optional GraphModifier)``.
+    """
     if operation.callable is not None:
         start = time.monotonic()
         ok, stdout, stderr, ret = _run_callable(operation.callable, params)
@@ -118,6 +137,7 @@ def run_step(
 
 
 def _record_modifier(result: StepResult, modifier: GraphModifier) -> None:
+    """Record modifier type and detail on a step result."""
     if isinstance(modifier, EdgeGuard):
         result.modifier_type = "edge_guard"
         result.modifier_detail = f"Blocked '{modifier.blocked_op}': {modifier.reason}"
@@ -130,6 +150,7 @@ def _record_modifier(result: StepResult, modifier: GraphModifier) -> None:
 
 
 def _run_hook(hook: TransientHook, params: dict[str, Any]) -> StepResult:
+    """Execute a transient hook and return its step result."""
     name = hook.name or f"hook_before_{hook.before_op}"
     start = time.monotonic()
     try:
@@ -155,6 +176,7 @@ def _run_hook(hook: TransientHook, params: dict[str, Any]) -> StepResult:
 
 
 def _run_observer(obs: TransitionObserver, params: dict[str, Any]) -> ObserverResult:
+    """Execute a transition observer's verify callback."""
     start = time.monotonic()
     try:
         obs.verify(params)
@@ -179,6 +201,7 @@ def _run_verify(
     params: dict[str, Any],
     timeout: int = 300,
 ) -> ObserverResult | None:
+    """Run the operation's verify callback or command, if defined."""
     if operation.verify_callable is not None:
         start = time.monotonic()
         try:
@@ -225,6 +248,7 @@ def _replan_remaining(
     graph: nx.MultiDiGraph,
     blocked_ops: set[str],
 ) -> list[str] | None:
+    """Attempt to find an alternative path when an operation is blocked."""
     def edge_ok(u: Any, v: Any, key: Any) -> bool:
         return graph.edges[u, v, key]["operation"] not in blocked_ops
 
@@ -269,6 +293,20 @@ def run_case(
     timeout: int = 300,
     graph: nx.MultiDiGraph | None = None,
 ) -> CaseResult:
+    """Execute all steps of a test case, including cleanup.
+
+    Handles edge guards (replanning), transient hooks, transition
+    observers, and verify callbacks during execution.
+
+    Args:
+        case: The test case to run.
+        definition: Full test definition for operation lookup.
+        timeout: Per-step timeout in seconds.
+        graph: Pre-built graph for replanning on blocked operations.
+
+    Returns:
+        Aggregate result for the case.
+    """
     ops_by_name = {op.name: op for op in definition.operations}
     params = dict(case.params) if case.params else dict(definition.suite.params)
     step_results: list[StepResult] = []
@@ -430,4 +468,5 @@ def run_all(
     timeout: int = 300,
     graph: nx.MultiDiGraph | None = None,
 ) -> list[CaseResult]:
+    """Run all test cases sequentially and return their results."""
     return [run_case(case, definition, timeout, graph=graph) for case in cases]

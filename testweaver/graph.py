@@ -12,14 +12,17 @@ from .schema import GraftDef, Operation, ParamChoice, TestCase, TestDefinition
 
 
 def _state_key(env: Env) -> str:
+    """Return a canonical string key for an environment node."""
     return repr(env)
 
 
 def _safe_val(value: Any) -> str:
+    """Sanitize a value for use in dot-separated state paths."""
     return str(value).replace('.', '_')
 
 
 def _render_state_paths(op: Operation, params: dict[str, Any]) -> Operation:
+    """Substitute parameter placeholders in an operation's state paths."""
     safe_params = {k: _safe_val(v) for k, v in params.items()}
 
     def render(path: str) -> str:
@@ -49,6 +52,7 @@ def _render_state_paths(op: Operation, params: dict[str, Any]) -> Operation:
 
 
 def _has_instance_templates(op: Operation, instance_names: set[str]) -> bool:
+    """Check whether an operation references any instance template variables."""
     all_paths = (
         op.provides + op.requires + op.clears + op.excludes + op.cuts
         + [g.src for g in op.grafts] + [g.tgt for g in op.grafts]
@@ -64,6 +68,7 @@ def _expand_instance_choices(
     operations: list[Operation],
     additive_choices: list[ParamChoice],
 ) -> list[Operation]:
+    """Expand additive param choices into per-value operation copies."""
     instance_names = {pc.name for pc in additive_choices}
     result: list[Operation] = []
 
@@ -98,6 +103,19 @@ def _expand_instance_choices(
 
 
 def apply_operation(env: Env, op: Operation) -> Env | None:
+    """Apply an operation's state changes to an environment.
+
+    Checks that all ``requires`` are active and no ``excludes`` are active,
+    then applies grafts, cuts, provides, and clears in order.
+
+    Args:
+        env: Current environment state.
+        op: Operation whose preconditions and effects to apply.
+
+    Returns:
+        A new Env with the operation's effects applied, or None if
+        preconditions are not met.
+    """
     for state in op.requires:
         if not env.is_active(state):
             return None
@@ -119,6 +137,7 @@ def apply_operation(env: Env, op: Operation) -> Env | None:
 def _expand_param_choices(
     param_choices: list[ParamChoice],
 ) -> list[Operation]:
+    """Create synthetic operations that set exclusive parameter states."""
     synthetic = []
     for pc in param_choices:
         all_states = [
@@ -143,6 +162,7 @@ def _extract_params_from_steps(
     param_choices: list[ParamChoice],
     base_params: dict[str, Any],
 ) -> dict[str, Any]:
+    """Reconstruct parameter values from the synthetic steps in a path."""
     params = dict(base_params)
     value_map: dict[str, dict[str, Any]] = {}
     for pc in param_choices:
@@ -164,6 +184,7 @@ def _extract_params_from_steps(
 
 
 def _is_initial_ignoring_params(env: Env) -> bool:
+    """Check whether an env is empty except for param-related state."""
     for key, child in env.children.items():
         if key == 'params':
             continue
@@ -176,6 +197,20 @@ def build_graph(
     operations: list[Operation],
     param_choices: list[ParamChoice] | None = None,
 ) -> nx.MultiDiGraph:
+    """Build the state-transition graph from operations and param choices.
+
+    Performs BFS from the empty initial state, applying each non-check
+    operation to discover reachable states and transitions.
+
+    Args:
+        operations: All defined operations.
+        param_choices: Optional parameter choices to expand into
+            synthetic operations.
+
+    Returns:
+        A directed multigraph where nodes are Env states and edges
+        are labeled with operation names.
+    """
     if param_choices:
         additive = [pc for pc in param_choices if pc.mode == 'additive']
         exclusive = [pc for pc in param_choices if pc.mode != 'additive']
@@ -219,6 +254,7 @@ def _find_target_nodes(
     target_op: Operation,
     param_choices: list[ParamChoice] | None = None,
 ) -> list[Env]:
+    """Find graph nodes from which a target operation can execute."""
     nodes = []
     for node in graph.nodes:
         if not all(node.is_active(r) for r in target_op.requires):
@@ -242,6 +278,7 @@ def _edges_between(
     u: Env,
     v: Env,
 ) -> list[str]:
+    """Return all operation names on edges from *u* to *v*."""
     return [data["operation"] for _, data in graph[u][v].items()]
 
 
@@ -251,6 +288,7 @@ def _find_cleanup_path(
     operations: list[Operation],
     has_param_choices: bool = False,
 ) -> list[str]:
+    """Find the shortest sequence of cleanup operations back to the initial state."""
     initial = Env()
 
     if has_param_choices:
@@ -321,6 +359,7 @@ def _generate_cases_single(
     base_params: dict[str, Any],
     all_ops: list[Operation] | None = None,
 ) -> list[TestCase]:
+    """Generate test cases for a single parameter combination."""
     if all_ops is None:
         all_ops = definition.operations
     ops_by_name = {op.name: op for op in all_ops}
@@ -454,10 +493,12 @@ def _generate_cases_single(
 
 
 def _normalize_step(step: str) -> str:
+    """Replace instance-parameter values with wildcards for shape comparison."""
     return re.sub(r'=([^\],]+)', '=*', step)
 
 
 def _prune_representative(cases: list[TestCase]) -> list[TestCase]:
+    """Keep one representative case per unique step-shape."""
     groups: dict[tuple, TestCase] = {}
     for case in cases:
         shape = tuple(_normalize_step(s) for s in case.steps)
@@ -467,6 +508,7 @@ def _prune_representative(cases: list[TestCase]) -> list[TestCase]:
 
 
 def _prune_pairwise(cases: list[TestCase]) -> list[TestCase]:
+    """Select the smallest subset of cases that covers all instance-parameter pairs."""
     case_pairs: list[tuple[TestCase, set[tuple[str, str]]]] = []
     all_pairs: set[tuple[str, str]] = set()
     for case in cases:
@@ -497,6 +539,7 @@ def _prune_pairwise(cases: list[TestCase]) -> list[TestCase]:
 
 
 def _apply_strategy(cases: list[TestCase], strategy: str) -> list[TestCase]:
+    """Apply the generation strategy to prune the case list."""
     if strategy == "pairwise":
         return _prune_pairwise(cases)
     if strategy == "representative":
@@ -508,6 +551,18 @@ def generate_cases(
     definition: TestDefinition,
     graph: nx.MultiDiGraph | None = None,
 ) -> list[TestCase]:
+    """Generate test cases from a test definition.
+
+    Builds the dependency graph (if not provided), enumerates all valid
+    paths to each target, and applies the configured generation strategy.
+
+    Args:
+        definition: Complete test definition with operations and suite config.
+        graph: Pre-built state graph; built automatically if None.
+
+    Returns:
+        List of generated test cases.
+    """
     param_choices = definition.suite.param_choices
     param_matrix = definition.suite.param_matrix
 
@@ -538,6 +593,7 @@ def generate_cases(
 def _generate_cases_with_matrix(
     definition: TestDefinition,
 ) -> list[TestCase]:
+    """Generate cases across all parameter matrix combinations."""
     from .matrix import expand_matrix, get_skip_ops
 
     matrix = definition.suite.param_matrix
@@ -586,7 +642,17 @@ def _generate_cases_with_matrix(
 def explain_graph(
     definition: TestDefinition,
     graph: nx.MultiDiGraph | None = None,
-) -> dict:
+) -> dict[str, Any]:
+    """Produce a summary dict describing the dependency graph.
+
+    Args:
+        definition: Complete test definition.
+        graph: Pre-built graph; built automatically if None.
+
+    Returns:
+        Dict with node/edge counts, reachable states, operation summaries,
+        target reachability, and bottleneck analysis.
+    """
     if graph is None:
         graph = build_graph(
             definition.operations,
