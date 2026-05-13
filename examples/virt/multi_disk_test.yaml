@@ -1,0 +1,16 @@
+modules:
+  - vm_basic.py
+  - multi_disk.py
+
+suite:
+  name: "Multi-Disk Hot-Plug"
+  description: "Multi-instance disk testing with additive namespaces"
+  targets: [check_any_disk_attached, check_any_disk_mounted]
+  params:
+    guest_name: testvm
+  param_choices:
+    - name: disk_id
+      values: [vdb, vdc]
+      mode: additive
+  max_cases: 50
+  cleanup: true

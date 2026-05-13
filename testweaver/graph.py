@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from itertools import product
+import re
+from itertools import combinations, product
 from typing import Any
 
 import networkx as nx
 
 from .env import Env
 from .errors import UnreachableTargetError
-from .schema import Operation, ParamChoice, TestCase, TestDefinition
+from .schema import GraftDef, Operation, ParamChoice, TestCase, TestDefinition
 
 
 def _state_key(env: Env) -> str:
@@ -16,6 +17,84 @@ def _state_key(env: Env) -> str:
 
 def _safe_val(value: Any) -> str:
     return str(value).replace('.', '_')
+
+
+def _render_state_paths(op: Operation, params: dict[str, Any]) -> Operation:
+    safe_params = {k: _safe_val(v) for k, v in params.items()}
+
+    def render(path: str) -> str:
+        if '{' not in path:
+            return path
+        return path.format_map(safe_params)
+
+    updates: dict[str, Any] = {}
+    if any('{' in p for p in op.provides):
+        updates['provides'] = [render(p) for p in op.provides]
+    if any('{' in p for p in op.requires):
+        updates['requires'] = [render(p) for p in op.requires]
+    if any('{' in p for p in op.clears):
+        updates['clears'] = [render(p) for p in op.clears]
+    if any('{' in p for p in op.excludes):
+        updates['excludes'] = [render(p) for p in op.excludes]
+    if any('{' in p for p in op.cuts):
+        updates['cuts'] = [render(p) for p in op.cuts]
+    if op.grafts and any('{' in g.src or '{' in g.tgt for g in op.grafts):
+        updates['grafts'] = [
+            GraftDef(src=render(g.src), tgt=render(g.tgt))
+            for g in op.grafts
+        ]
+    if not updates:
+        return op
+    return op.model_copy(update=updates)
+
+
+def _has_instance_templates(op: Operation, instance_names: set[str]) -> bool:
+    all_paths = (
+        op.provides + op.requires + op.clears + op.excludes + op.cuts
+        + [g.src for g in op.grafts] + [g.tgt for g in op.grafts]
+    )
+    for path in all_paths:
+        for name in instance_names:
+            if '{' + name + '}' in path:
+                return True
+    return False
+
+
+def _expand_instance_choices(
+    operations: list[Operation],
+    additive_choices: list[ParamChoice],
+) -> list[Operation]:
+    instance_names = {pc.name for pc in additive_choices}
+    result: list[Operation] = []
+
+    for op in operations:
+        if not _has_instance_templates(op, instance_names):
+            result.append(op)
+            continue
+
+        referenced = [
+            pc for pc in additive_choices
+            if '{' + pc.name + '}' in str(
+                op.provides + op.requires + op.clears + op.excludes + op.cuts
+            )
+        ]
+        if not referenced:
+            result.append(op)
+            continue
+
+        names = [pc.name for pc in referenced]
+        value_lists = [pc.values for pc in referenced]
+        for combo_values in product(*value_lists):
+            combo = dict(zip(names, combo_values))
+            tag = ",".join(f"{k}={_safe_val(v)}" for k, v in sorted(combo.items()))
+            rendered = _render_state_paths(op, combo)
+            expanded = rendered.model_copy(update={
+                'name': f"{op.name}[{tag}]",
+                'instance_params': combo,
+            })
+            result.append(expanded)
+
+    return result
 
 
 def apply_operation(env: Env, op: Operation) -> Env | None:
@@ -72,11 +151,15 @@ def _extract_params_from_steps(
             value_map[key] = (pc.name, val)
     for step in steps:
         op = ops_by_name.get(step)
-        if op and op.param_provider:
+        if not op:
+            continue
+        if op.param_provider:
             for state in op.provides:
                 if state in value_map:
                     name, val = value_map[state]
                     params[name] = val
+        if op.instance_params:
+            params.update(op.instance_params)
     return params
 
 
@@ -94,8 +177,15 @@ def build_graph(
     param_choices: list[ParamChoice] | None = None,
 ) -> nx.MultiDiGraph:
     if param_choices:
-        param_ops = _expand_param_choices(param_choices)
-        operations = list(operations) + param_ops
+        additive = [pc for pc in param_choices if pc.mode == 'additive']
+        exclusive = [pc for pc in param_choices if pc.mode != 'additive']
+        if additive:
+            operations = _expand_instance_choices(list(operations), additive)
+        if exclusive:
+            param_ops = _expand_param_choices(exclusive)
+            operations = list(operations) + param_ops
+    else:
+        operations = list(operations)
 
     graph = nx.MultiDiGraph()
     initial = Env()
@@ -136,9 +226,10 @@ def _find_target_nodes(
         if any(node.is_active(s) for s in target_op.excludes):
             continue
         if param_choices:
+            exclusive = [pc for pc in param_choices if pc.mode != 'additive']
             all_params_set = all(
                 node.is_active(f"params.{pc.name}")
-                for pc in param_choices
+                for pc in exclusive
             )
             if not all_params_set:
                 continue
@@ -233,17 +324,27 @@ def _generate_cases_single(
     if all_ops is None:
         all_ops = definition.operations
     ops_by_name = {op.name: op for op in all_ops}
-    has_param_choices = bool(definition.suite.param_choices)
+    all_pc = definition.suite.param_choices or []
+    has_exclusive_choices = bool([pc for pc in all_pc if pc.mode != 'additive'])
+    has_any_choices = bool(all_pc)
     all_cases: list[TestCase] = []
     seen_case_keys: set[tuple] = set()
 
-    for target_name in definition.suite.targets:
+    effective_targets: list[str] = []
+    for t in definition.suite.targets:
+        if t in ops_by_name:
+            effective_targets.append(t)
+        else:
+            expanded = [n for n in ops_by_name if n.startswith(t + '[')]
+            effective_targets.extend(expanded if expanded else [t])
+
+    for target_name in effective_targets:
         target_op = ops_by_name.get(target_name)
         if target_op is None:
             continue
         target_nodes = _find_target_nodes(
             graph, target_op,
-            param_choices=definition.suite.param_choices or None,
+            param_choices=all_pc or None,
         )
 
         if not target_nodes:
@@ -290,10 +391,10 @@ def _generate_cases_single(
                     all_steps = list(combo) + [target_name]
 
                     case_params = base_params
-                    if has_param_choices:
+                    if has_any_choices:
                         case_params = _extract_params_from_steps(
                             all_steps, ops_by_name,
-                            definition.suite.param_choices, base_params,
+                            all_pc, base_params,
                         )
 
                     visible_steps = [
@@ -307,11 +408,11 @@ def _generate_cases_single(
                         if final_state is None:
                             final_state = target_node
                         cleanup_steps = _find_cleanup_path(
-                            graph, final_state, all_ops, has_param_choices,
+                            graph, final_state, all_ops, has_exclusive_choices,
                         )
 
                     case_id = f"{target_name}-{case_count + 1}"
-                    if has_param_choices:
+                    if has_any_choices:
                         diff = {
                             k: v for k, v in case_params.items()
                             if k not in base_params or base_params[k] != v
@@ -352,6 +453,57 @@ def _generate_cases_single(
     return all_cases
 
 
+def _normalize_step(step: str) -> str:
+    return re.sub(r'=([^\],]+)', '=*', step)
+
+
+def _prune_representative(cases: list[TestCase]) -> list[TestCase]:
+    groups: dict[tuple, TestCase] = {}
+    for case in cases:
+        shape = tuple(_normalize_step(s) for s in case.steps)
+        if shape not in groups:
+            groups[shape] = case
+    return list(groups.values())
+
+
+def _prune_pairwise(cases: list[TestCase]) -> list[TestCase]:
+    case_pairs: list[tuple[TestCase, set[tuple[str, str]]]] = []
+    all_pairs: set[tuple[str, str]] = set()
+    for case in cases:
+        tagged = [s for s in case.steps if '[' in s]
+        pairs = set(combinations(tagged, 2))
+        case_pairs.append((case, pairs))
+        all_pairs.update(pairs)
+
+    if not all_pairs:
+        return cases
+
+    uncovered = set(all_pairs)
+    selected: list[TestCase] = []
+    remaining = list(case_pairs)
+
+    while uncovered and remaining:
+        best_idx = max(
+            range(len(remaining)),
+            key=lambda i: len(remaining[i][1] & uncovered),
+        )
+        case, pairs = remaining.pop(best_idx)
+        if not (pairs & uncovered):
+            continue
+        selected.append(case)
+        uncovered -= pairs
+
+    return selected if selected else cases[:1]
+
+
+def _apply_strategy(cases: list[TestCase], strategy: str) -> list[TestCase]:
+    if strategy == "pairwise":
+        return _prune_pairwise(cases)
+    if strategy == "representative":
+        return _prune_representative(cases)
+    return cases
+
+
 def generate_cases(
     definition: TestDefinition,
     graph: nx.MultiDiGraph | None = None,
@@ -364,7 +516,12 @@ def generate_cases(
 
     all_ops = list(definition.operations)
     if param_choices:
-        all_ops = all_ops + _expand_param_choices(param_choices)
+        additive = [pc for pc in param_choices if pc.mode == 'additive']
+        exclusive = [pc for pc in param_choices if pc.mode != 'additive']
+        if additive:
+            all_ops = _expand_instance_choices(all_ops, additive)
+        if exclusive:
+            all_ops = all_ops + _expand_param_choices(exclusive)
 
     if graph is None:
         graph = build_graph(
@@ -372,9 +529,10 @@ def generate_cases(
             param_choices=param_choices or None,
         )
 
-    return _generate_cases_single(
+    cases = _generate_cases_single(
         definition, graph, definition.suite.params, all_ops,
     )
+    return _apply_strategy(cases, definition.suite.generation_strategy)
 
 
 def _generate_cases_with_matrix(
@@ -422,7 +580,7 @@ def _generate_cases_with_matrix(
 
         all_cases.extend(combo_cases)
 
-    return all_cases
+    return _apply_strategy(all_cases, definition.suite.generation_strategy)
 
 
 def explain_graph(

@@ -7,6 +7,7 @@ A node is "active" if its data is True or any of its children are active.
 from __future__ import annotations
 
 import copy
+from fnmatch import fnmatch
 
 
 class Env:
@@ -39,10 +40,27 @@ class Env:
             node.data = False
 
     def is_active(self, path: str) -> bool:
+        if '*' in path:
+            return self._is_active_glob(path.split('.'), 0)
         node = self._get_node(path)
         if node is None:
             return False
         return node._has_active()
+
+    def _is_active_glob(self, parts: list[str], idx: int) -> bool:
+        if idx >= len(parts):
+            return self._has_active()
+        segment = parts[idx]
+        if '*' in segment:
+            return any(
+                child._is_active_glob(parts, idx + 1)
+                for key, child in self.children.items()
+                if fnmatch(key, segment)
+            )
+        child = self.children.get(segment)
+        if child is None:
+            return False
+        return child._is_active_glob(parts, idx + 1)
 
     def _has_active(self) -> bool:
         if self.data:

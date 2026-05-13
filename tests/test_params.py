@@ -1,4 +1,5 @@
 import textwrap
+from itertools import combinations
 from pathlib import Path
 
 from testweaver.decorators import (
@@ -442,3 +443,451 @@ def test_yaml_with_param_matrix(tmp_path):
     assert len(cases) == 2
     sizes = {c.params['size'] for c in cases}
     assert sizes == {10, 20}
+
+
+# --- Instance expansion (additive mode) ---
+
+from testweaver.graph import (
+    _render_state_paths, _has_instance_templates, _expand_instance_choices,
+)
+
+
+def test_render_state_paths_basic():
+    op = Operation(
+        name="attach", type="action",
+        provides=["vm.TPM:{tpm_id}.init"],
+        requires=["vm.active"],
+    )
+    rendered = _render_state_paths(op, {"tpm_id": "tpm0"})
+    assert rendered.provides == ["vm.TPM:tpm0.init"]
+    assert rendered.requires == ["vm.active"]
+    assert rendered.name == "attach"
+
+
+def test_render_state_paths_no_templates():
+    op = Operation(
+        name="setup", type="action",
+        provides=["vm.active"],
+    )
+    rendered = _render_state_paths(op, {"tpm_id": "tpm0"})
+    assert rendered is op
+
+
+def test_render_state_paths_sanitizes_dots():
+    op = Operation(
+        name="attach", type="action",
+        provides=["dev.{dev_id}.ready"],
+    )
+    rendered = _render_state_paths(op, {"dev_id": "disk.0"})
+    assert rendered.provides == ["dev.disk_0.ready"]
+
+
+def test_has_instance_templates():
+    op = Operation(
+        name="attach", type="action",
+        provides=["vm.TPM:{tpm_id}.init"],
+    )
+    assert _has_instance_templates(op, {"tpm_id"})
+    assert not _has_instance_templates(op, {"disk_id"})
+
+
+def test_expand_instance_choices_basic():
+    ops = [
+        Operation(
+            name="attach", type="action",
+            provides=["vm.TPM:{tpm_id}.init"],
+        ),
+        Operation(
+            name="start", type="action",
+            provides=["vm.active"],
+        ),
+    ]
+    choices = [ParamChoice(name="tpm_id", values=["tpm0", "tpm1"], mode="additive")]
+    expanded = _expand_instance_choices(ops, choices)
+
+    assert len(expanded) == 3
+    names = {op.name for op in expanded}
+    assert "attach[tpm_id=tpm0]" in names
+    assert "attach[tpm_id=tpm1]" in names
+    assert "start" in names
+
+    tpm0_op = next(op for op in expanded if op.name == "attach[tpm_id=tpm0]")
+    assert tpm0_op.provides == ["vm.TPM:tpm0.init"]
+    assert tpm0_op.instance_params == {"tpm_id": "tpm0"}
+
+
+def test_instance_graph_multiple_devices():
+    ops = [
+        Operation(name="attach", type="action", provides=["TPM:{tpm_id}.init"]),
+        Operation(
+            name="configure", type="action",
+            requires=["TPM:{tpm_id}.init"],
+            provides=["TPM:{tpm_id}.ready"],
+        ),
+        Operation(name="check", type="check", requires=["TPM:{tpm_id}.ready"]),
+    ]
+    defn = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="multi-tpm",
+            targets=["check"],
+            param_choices=[
+                ParamChoice(name="tpm_id", values=["tpm0", "tpm1"], mode="additive"),
+            ],
+            cleanup=False,
+        ),
+    )
+    cases = generate_cases(defn)
+    assert len(cases) >= 2
+    all_steps = set()
+    for case in cases:
+        all_steps.update(case.steps)
+    assert "attach[tpm_id=tpm0]" in all_steps
+    assert "attach[tpm_id=tpm1]" in all_steps
+
+
+def test_instance_cases_contain_all_instances():
+    ops = [
+        Operation(name="init", type="action", provides=["dev:{dev_id}.on"]),
+        Operation(
+            name="verify", type="check",
+            requires=["dev:{dev_id}.on"],
+        ),
+    ]
+    defn = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="device-test",
+            targets=["verify"],
+            param_choices=[
+                ParamChoice(name="dev_id", values=["d0", "d1"], mode="additive"),
+            ],
+            cleanup=False,
+        ),
+    )
+    cases = generate_cases(defn)
+    assert len(cases) >= 2
+    targets = set()
+    for case in cases:
+        check_steps = [s for s in case.steps if s.startswith("verify")]
+        targets.update(check_steps)
+    assert "verify[dev_id=d0]" in targets
+    assert "verify[dev_id=d1]" in targets
+
+
+def test_instance_params_in_case():
+    ops = [
+        Operation(name="attach", type="action", provides=["TPM:{tpm_id}.init"]),
+        Operation(name="check", type="check", requires=["TPM:{tpm_id}.init"]),
+    ]
+    defn = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="test",
+            targets=["check"],
+            param_choices=[
+                ParamChoice(name="tpm_id", values=["tpm0"], mode="additive"),
+            ],
+            cleanup=False,
+        ),
+    )
+    cases = generate_cases(defn)
+    assert len(cases) == 1
+    assert cases[0].params.get("tpm_id") == "tpm0"
+
+
+def test_additive_and_exclusive_coexist():
+    ops = [
+        Operation(name="setup", type="action", provides=["ready"]),
+        Operation(name="attach", type="action",
+                  requires=["ready"], provides=["TPM:{tpm_id}.init"]),
+        Operation(name="check", type="check",
+                  requires=["TPM:{tpm_id}.init"]),
+        Operation(name="teardown", type="cleanup",
+                  requires=["ready"], clears=["ready"]),
+    ]
+    defn = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="test",
+            targets=["check"],
+            param_choices=[
+                ParamChoice(name="mode", values=["fast", "slow"], mode="exclusive"),
+                ParamChoice(name="tpm_id", values=["tpm0"], mode="additive"),
+            ],
+        ),
+    )
+    cases = generate_cases(defn)
+    assert len(cases) >= 2
+    modes = {c.params.get("mode") for c in cases}
+    assert modes == {"fast", "slow"}
+    for case in cases:
+        assert case.params.get("tpm_id") == "tpm0"
+
+
+def test_no_expansion_without_templates():
+    ops = [
+        Operation(name="setup", type="action", provides=["ready"]),
+        Operation(name="check", type="check", requires=["ready"]),
+        Operation(name="teardown", type="cleanup", requires=["ready"], clears=["ready"]),
+    ]
+    defn = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="test",
+            targets=["check"],
+            param_choices=[
+                ParamChoice(name="tpm_id", values=["tpm0", "tpm1"], mode="additive"),
+            ],
+        ),
+    )
+    cases = generate_cases(defn)
+    assert len(cases) >= 1
+    for case in cases:
+        for step in case.steps:
+            assert '[' not in step
+
+
+# --- Wildcard matching ---
+
+from testweaver.env import Env
+
+
+def test_env_wildcard_basic():
+    env = Env()
+    env.set('TPM:tpm0.ready')
+    assert env.is_active('TPM:tpm*.ready')
+
+
+def test_env_wildcard_no_match():
+    env = Env()
+    env.set('TPM:tpm0.init')
+    assert not env.is_active('TPM:tpm*.ready')
+
+
+def test_env_wildcard_multiple_instances():
+    env = Env()
+    env.set('TPM:tpm0.init')
+    env.set('TPM:tpm1.ready')
+    assert env.is_active('TPM:tpm*.ready')
+    assert not env.is_active('TPM:tpm*.configured')
+
+
+def test_env_wildcard_nested():
+    env = Env()
+    env.set('vm.active.TPM:tpm0.ready')
+    env.set('vm.active.TPM:tpm1.init')
+    assert env.is_active('vm.active.TPM:tpm*.ready')
+    assert env.is_active('vm.active.TPM:tpm*.init')
+    assert not env.is_active('vm.active.DISK:disk*.ready')
+
+
+def test_env_no_wildcard_unchanged():
+    env = Env()
+    env.set('a.b.c')
+    assert env.is_active('a.b.c')
+    assert env.is_active('a.b')
+    assert env.is_active('a')
+    assert not env.is_active('a.b.d')
+    assert not env.is_active('x.y')
+
+
+def test_wildcard_requires_in_graph():
+    ops = [
+        Operation(name="attach", type="action", provides=["TPM:{tpm_id}.init"]),
+        Operation(
+            name="configure", type="action",
+            requires=["TPM:{tpm_id}.init"],
+            provides=["TPM:{tpm_id}.ready"],
+        ),
+        Operation(
+            name="check_any_ready", type="check",
+            requires=["TPM:tpm*.ready"],
+        ),
+    ]
+    defn = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="wildcard-test",
+            targets=["check_any_ready"],
+            param_choices=[
+                ParamChoice(name="tpm_id", values=["tpm0", "tpm1"], mode="additive"),
+            ],
+            cleanup=False,
+        ),
+    )
+    cases = generate_cases(defn)
+    assert len(cases) >= 1
+    for case in cases:
+        assert "check_any_ready" in case.steps
+        has_configure = any(s.startswith("configure[") for s in case.steps)
+        assert has_configure
+
+
+def test_wildcard_excludes_in_graph():
+    env = Env()
+    env.set('TPM:tpm0.error')
+    assert env.is_active('TPM:tpm*.error')
+
+    env2 = Env()
+    env2.set('TPM:tpm0.ready')
+    assert not env2.is_active('TPM:tpm*.error')
+
+
+# --- Read-write separation (Problem 5) ---
+
+
+def test_wildcard_in_provides_rejected():
+    import pytest
+    with pytest.raises(ValueError, match="wildcard.*not allowed.*write"):
+        TestDefinition(
+            operations=[
+                Operation(name="bad", type="action", provides=["TPM:tpm*.init"]),
+                Operation(name="c", type="check", requires=["TPM:tpm*.init"]),
+            ],
+            suite=TestSuite(name="test", targets=["c"]),
+        )
+
+
+def test_wildcard_in_clears_rejected():
+    import pytest
+    with pytest.raises(ValueError, match="wildcard.*not allowed.*write"):
+        TestDefinition(
+            operations=[
+                Operation(name="setup", type="action", provides=["ready"]),
+                Operation(name="bad", type="cleanup", requires=["ready"],
+                          clears=["TPM:tpm*.init"]),
+                Operation(name="c", type="check", requires=["ready"]),
+            ],
+            suite=TestSuite(name="test", targets=["c"]),
+        )
+
+
+def test_wildcard_in_requires_allowed():
+    defn = TestDefinition(
+        operations=[
+            Operation(name="setup", type="action", provides=["TPM:tpm0.ready"]),
+            Operation(name="check", type="check", requires=["TPM:tpm*.ready"]),
+            Operation(name="cleanup", type="cleanup",
+                      requires=["TPM:tpm0.ready"], clears=["TPM:tpm0.ready"]),
+        ],
+        suite=TestSuite(name="test", targets=["check"]),
+    )
+    assert defn is not None
+
+
+# --- Generation strategies (Problem 4) ---
+
+
+def test_generation_strategy_exhaustive_default():
+    ops = [
+        Operation(name="attach", type="action", provides=["TPM:{tpm_id}.init"]),
+        Operation(name="check", type="check", requires=["TPM:{tpm_id}.init"]),
+    ]
+    defn = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="test",
+            targets=["check"],
+            param_choices=[
+                ParamChoice(name="tpm_id", values=["tpm0", "tpm1"], mode="additive"),
+            ],
+            cleanup=False,
+        ),
+    )
+    cases = generate_cases(defn)
+    exhaustive_count = len(cases)
+    assert exhaustive_count >= 2
+
+
+def test_generation_strategy_representative():
+    ops = [
+        Operation(name="attach", type="action", provides=["TPM:{tpm_id}.init"]),
+        Operation(
+            name="configure", type="action",
+            requires=["TPM:{tpm_id}.init"],
+            provides=["TPM:{tpm_id}.ready"],
+        ),
+        Operation(name="check", type="check", requires=["TPM:{tpm_id}.ready"]),
+    ]
+    defn_exhaust = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="test",
+            targets=["check"],
+            param_choices=[
+                ParamChoice(name="tpm_id", values=["tpm0", "tpm1"], mode="additive"),
+            ],
+            cleanup=False,
+            generation_strategy="exhaustive",
+        ),
+    )
+    defn_repr = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="test",
+            targets=["check"],
+            param_choices=[
+                ParamChoice(name="tpm_id", values=["tpm0", "tpm1"], mode="additive"),
+            ],
+            cleanup=False,
+            generation_strategy="representative",
+        ),
+    )
+    exhaust_cases = generate_cases(defn_exhaust)
+    repr_cases = generate_cases(defn_repr)
+    assert len(repr_cases) <= len(exhaust_cases)
+    assert len(repr_cases) >= 1
+
+
+def test_generation_strategy_pairwise():
+    ops = [
+        Operation(name="attach_tpm", type="action", provides=["TPM:{tpm_id}.on"]),
+        Operation(name="attach_disk", type="action", provides=["DISK:{disk_id}.on"]),
+        Operation(
+            name="check", type="check",
+            requires=["TPM:tpm*.on", "DISK:disk*.on"],
+        ),
+    ]
+    defn_exhaust = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="test",
+            targets=["check"],
+            param_choices=[
+                ParamChoice(name="tpm_id", values=["tpm0", "tpm1"], mode="additive"),
+                ParamChoice(name="disk_id", values=["disk0", "disk1"], mode="additive"),
+            ],
+            cleanup=False,
+            generation_strategy="exhaustive",
+        ),
+    )
+    defn_pair = TestDefinition(
+        operations=ops,
+        suite=TestSuite(
+            name="test",
+            targets=["check"],
+            param_choices=[
+                ParamChoice(name="tpm_id", values=["tpm0", "tpm1"], mode="additive"),
+                ParamChoice(name="disk_id", values=["disk0", "disk1"], mode="additive"),
+            ],
+            cleanup=False,
+            generation_strategy="pairwise",
+        ),
+    )
+    exhaust_cases = generate_cases(defn_exhaust)
+    pair_cases = generate_cases(defn_pair)
+    assert len(pair_cases) <= len(exhaust_cases)
+    assert len(pair_cases) >= 1
+
+    all_tagged = set()
+    for case in pair_cases:
+        tagged = [s for s in case.steps if '[' in s]
+        for a, b in combinations(tagged, 2):
+            all_tagged.add((a, b))
+    exhaust_pairs = set()
+    for case in exhaust_cases:
+        tagged = [s for s in case.steps if '[' in s]
+        for a, b in combinations(tagged, 2):
+            exhaust_pairs.add((a, b))
+    assert all_tagged == exhaust_pairs

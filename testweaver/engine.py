@@ -8,7 +8,7 @@ from typing import Any
 import networkx as nx
 
 from .env import Env
-from .graph import apply_operation
+from .graph import _render_state_paths, apply_operation
 from .modifiers import EdgeGuard, GraphModifier, TransientHook, TransitionObserver
 from .schema import (
     CaseResult,
@@ -56,6 +56,18 @@ def _extract_modifier(value: Any) -> GraphModifier | None:
     if isinstance(value, (EdgeGuard, TransientHook, TransitionObserver)):
         return value
     return None
+
+
+def _parse_instance_params(step_name: str) -> tuple[str, dict[str, Any]]:
+    if '[' not in step_name:
+        return step_name, {}
+    base, rest = step_name.split('[', 1)
+    param_str = rest.rstrip(']')
+    instance_params: dict[str, Any] = {}
+    for pair in param_str.split(','):
+        k, v = pair.strip().split('=', 1)
+        instance_params[k] = v
+    return base, instance_params
 
 
 def run_step(
@@ -279,6 +291,13 @@ def run_case(
     while main_idx < len(remaining_main):
         step_name = remaining_main[main_idx]
         op = ops_by_name.get(step_name)
+        instance_params: dict[str, Any] = {}
+
+        if op is None and '[' in step_name:
+            base_name, instance_params = _parse_instance_params(step_name)
+            op = ops_by_name.get(base_name)
+            if op is not None:
+                op = _render_state_paths(op, instance_params)
 
         if op is None:
             step_results.append(StepResult(
@@ -331,13 +350,16 @@ def run_case(
         if case_status != "pass":
             break
 
-        # Execute the step
-        result, modifier = run_step(op, params, timeout)
+        # Execute the step with per-step params (instance values merged)
+        step_params = dict(params)
+        if instance_params:
+            step_params.update(instance_params)
+        result, modifier = run_step(op, step_params, timeout)
         step_results.append(result)
 
         # Run verify if step passed
         if result.status == "pass":
-            verify_result = _run_verify(op, params, timeout)
+            verify_result = _run_verify(op, step_params, timeout)
             if verify_result is not None:
                 result.verify_result = verify_result
                 if verify_result.status != "pass":

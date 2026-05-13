@@ -25,6 +25,7 @@ class ParamChoice(BaseModel):
     name: str
     values: list[Any]
     description: str = ""
+    mode: Literal["exclusive", "additive"] = "exclusive"
 
 
 class ParamAxis(BaseModel):
@@ -64,6 +65,7 @@ class Operation(BaseModel):
     callable: Callable | None = Field(default=None, exclude=True)
     verify_callable: Callable | None = Field(default=None, exclude=True)
     param_provider: str | None = Field(default=None, exclude=True)
+    instance_params: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     @model_validator(mode="after")
     def check_cleanup_has_clears(self) -> Operation:
@@ -83,6 +85,7 @@ class TestSuite(BaseModel):
     targets: list[str]
     max_cases: int = 100
     cleanup: bool = True
+    generation_strategy: Literal["exhaustive", "pairwise", "representative"] = "exhaustive"
 
 
 class TestDefinition(BaseModel):
@@ -127,6 +130,8 @@ class TestDefinition(BaseModel):
             for req in op.requires:
                 if req.startswith('params.'):
                     continue
+                if '{' in req or '*' in req:
+                    continue
                 if not _state_is_reachable(req, all_states):
                     raise ValueError(
                         f"Operation '{op.name}' requires state '{req}' "
@@ -142,6 +147,23 @@ class TestDefinition(BaseModel):
             raise ValueError(
                 "Cannot use both 'param_choices' and 'param_matrix' in the same suite"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_no_wildcards_in_writes(self) -> TestDefinition:
+        for op in self.operations:
+            for path in op.provides + op.clears + op.cuts:
+                if '*' in path:
+                    raise ValueError(
+                        f"Operation '{op.name}': wildcard '*' is not allowed "
+                        f"in write paths (provides/clears/cuts): '{path}'"
+                    )
+            for g in op.grafts:
+                if '*' in g.src or '*' in g.tgt:
+                    raise ValueError(
+                        f"Operation '{op.name}': wildcard '*' is not allowed "
+                        f"in graft paths: src='{g.src}', tgt='{g.tgt}'"
+                    )
         return self
 
 

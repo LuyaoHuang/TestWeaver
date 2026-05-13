@@ -11,6 +11,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Automatic case generation** — dependency graph finds all valid paths to reach each test target
 - **Operation verification** — attach verify callbacks to operations with `@verify_for` or the `verify` YAML field; runs automatically after each successful step
 - **Parameter support** — two approaches for parameterized testing: parameter graph and parameter matrix
+- **Multi-instance namespaces** — model multiple devices of the same type (`TPM:tpm0`, `TPM:tpm1`) with independent states in a single graph, wildcard queries (`TPM:tpm*.ready`), and generation strategies to control state-space explosion
 - **Graph modifiers** — runtime modifiers (`EdgeGuard`, `TransientHook`, `TransitionObserver`) let operations influence future execution when the graph can't be fully static
 - **Structured JSON output** — every command outputs machine-readable JSON
 - **Built-in analysis** — failure detection, debug suggestions, and performance summaries
@@ -313,6 +314,74 @@ testweaver run examples/virt/backing_chain_test.yaml --format text
 ```
 
 See [docs/examples.md](docs/examples.md#virtualization-examples) for the full list.
+
+## Multi-Instance Namespaces
+
+When testing systems with multiple devices of the same type (e.g., multiple TPMs, disks, or NICs), use the namespace separator `:` with additive parameter choices to model independent device instances in a single graph.
+
+### Defining Instance Operations
+
+Use `{param}` templates in state paths. The `:` separates the collection name from the instance ID:
+
+```python
+from testweaver import action, check, provides, requires
+
+@action
+@provides('vm.active.TPM:{tpm_id}.init')
+def attach_tpm(params):
+    print(f"Attaching TPM {params['tpm_id']}")
+
+@action
+@requires('vm.active.TPM:{tpm_id}.init')
+@provides('vm.active.TPM:{tpm_id}.ready')
+def configure_tpm(params):
+    print(f"Configuring TPM {params['tpm_id']}")
+
+@check
+@requires('vm.active.TPM:tpm*.ready')  # wildcard: ANY instance ready
+def check_any_tpm_ready(params):
+    print("At least one TPM is ready")
+```
+
+### Declaring Instances
+
+Use `mode: additive` on `param_choices` to expand templates into concrete operations that coexist in the same graph:
+
+```yaml
+suite:
+  name: "Multi-TPM Verification"
+  targets: [check_any_tpm_ready]
+  param_choices:
+    - name: tpm_id
+      values: [tpm0, tpm1]
+      mode: additive
+```
+
+This expands `attach_tpm` into `attach_tpm[tpm_id=tpm0]` and `attach_tpm[tpm_id=tpm1]`, each with independent state paths. The graph explores all orderings of device operations.
+
+### Read-Write Separation
+
+- **Write paths** (`provides`, `clears`, `cuts`, `grafts`): must be deterministic — use `{param}` templates, never `*`
+- **Read paths** (`requires`, `excludes`): can use `*` wildcards for cross-instance queries
+
+### Generation Strategies
+
+Multi-instance graphs can produce many test cases. Control this with `generation_strategy`:
+
+```yaml
+suite:
+  name: "Multi-Device Test"
+  targets: [check_all_ready]
+  generation_strategy: pairwise  # or: exhaustive, representative
+```
+
+| Strategy | Description |
+|----------|-------------|
+| `exhaustive` | (Default) All valid test paths |
+| `pairwise` | Minimum subset covering all pairs of instance operations |
+| `representative` | One test case per unique step-sequence shape |
+
+See [docs/examples.md](docs/examples.md#multi-instance-namespaces) for full examples.
 
 ## CLI Reference
 
