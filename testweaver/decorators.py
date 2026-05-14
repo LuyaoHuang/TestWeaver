@@ -93,6 +93,15 @@ def timeout(seconds: int) -> Callable:
     return decorator
 
 
+def priority(level: int) -> Callable:
+    """Set a priority level for this operation. Higher values = more important."""
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        meta['priority'] = level
+        return func
+    return decorator
+
+
 def _type_decorator(op_type: str) -> Callable:
     """Create a decorator that sets the operation type."""
     def decorator(func: Callable) -> Callable:

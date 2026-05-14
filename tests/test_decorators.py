@@ -4,7 +4,7 @@ from pathlib import Path
 
 from testweaver.decorators import (
     action, check, cleanup, setup, provides, requires, clears,
-    excludes, graft, cut,
+    excludes, graft, cut, priority,
 )
 from testweaver.env import Env
 from testweaver.loader import load_module, extract_operations, load_operations_from_modules
@@ -475,3 +475,42 @@ def test_hierarchical_requires():
     cases = generate_cases(defn)
     assert len(cases) == 1
     assert cases[0].steps == ["setup", "check"]
+
+
+def test_priority_decorator():
+    @priority(5)
+    def my_op(params):
+        pass
+    assert my_op._tw_meta['priority'] == 5
+
+
+def test_priority_stacked_with_action():
+    @action
+    @priority(3)
+    @provides('x')
+    def my_op(params):
+        pass
+    meta = my_op._tw_meta
+    assert meta['type'] == 'action'
+    assert meta['priority'] == 3
+    assert meta['provides'] == ['x']
+
+
+def test_priority_extracted_by_loader():
+    src = textwrap.dedent("""\
+        from testweaver import action, provides, priority
+
+        @action
+        @priority(7)
+        @provides('state.ready')
+        def important_op(params):
+            pass
+    """)
+    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+        f.write(src)
+        f.flush()
+        module = load_module(f.name)
+        pairs = extract_operations(module)
+    assert len(pairs) == 1
+    op, _ = pairs[0]
+    assert op.priority == 7

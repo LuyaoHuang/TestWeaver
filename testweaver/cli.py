@@ -13,6 +13,7 @@ from .analyzer import find_failures, suggest_debug, summarize_run
 from .engine import _substitute_params, run_all
 from .filtering import filter_cases
 from .graph import build_graph, explain_graph, export_graph, generate_cases
+from .sorting import SORT_STRATEGIES, sort_cases
 from .reporters import to_html, to_junit_xml, to_tap
 from .schema import (
     CaseResult,
@@ -179,12 +180,18 @@ def validate(path: str, verbose: bool, debug: bool) -> None:
               help="Override max path depth (default: 20)")
 @click.option("--max-state-depth", type=int, default=None,
               help="Override max state depth (default: 0 = no limit)")
+@click.option("--sort", "-s", "sort_strategy",
+              type=click.Choice(list(SORT_STRATEGIES)), default=None,
+              help="Sort cases by strategy")
+@click.option("--sort-seed", type=int, default=None,
+              help="Random seed for --sort=random")
 def generate(path: str, fmt: str, param: tuple[str, ...],
              filters: tuple[str, ...], filter_targets: tuple[str, ...],
              filter_steps: tuple[str, ...], fault_only: bool,
              no_fault: bool, verbose: bool, debug: bool,
              max_graph_nodes: int | None, max_path_depth: int | None,
-             max_state_depth: int | None) -> None:
+             max_state_depth: int | None,
+             sort_strategy: str | None, sort_seed: int | None) -> None:
     """Generate test cases from a definition file."""
     _configure_logging(verbose=verbose, debug=debug)
     definition = load_definition(path)
@@ -207,6 +214,11 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
         fault_only=fault_only,
         no_fault=no_fault,
     )
+    if sort_strategy:
+        cases = sort_cases(
+            cases, sort_strategy,
+            operations=definition.operations, seed=sort_seed,
+        )
 
     if fmt == "json":
         output = [json.loads(c.model_dump_json()) for c in cases]
@@ -259,13 +271,19 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
               help="Override max path depth (default: 20)")
 @click.option("--max-state-depth", type=int, default=None,
               help="Override max state depth (default: 0 = no limit)")
+@click.option("--sort", "-s", "sort_strategy",
+              type=click.Choice(list(SORT_STRATEGIES)), default=None,
+              help="Sort cases by strategy")
+@click.option("--sort-seed", type=int, default=None,
+              help="Random seed for --sort=random")
 def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...],
         workers: int, retries: int, retry_delay: float,
         filters: tuple[str, ...], filter_targets: tuple[str, ...],
         filter_steps: tuple[str, ...], fault_only: bool, no_fault: bool,
         verbose: bool, debug: bool, log_file: str | None, dry_run: bool,
         max_graph_nodes: int | None, max_path_depth: int | None,
-        max_state_depth: int | None) -> None:
+        max_state_depth: int | None,
+        sort_strategy: str | None, sort_seed: int | None) -> None:
     """Run test cases from a definition file."""
     _configure_logging(verbose=verbose, debug=debug, log_file=log_file, workers=workers)
     definition = load_definition(path)
@@ -295,6 +313,11 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
         fault_only=fault_only,
         no_fault=no_fault,
     )
+    if sort_strategy:
+        cases = sort_cases(
+            cases, sort_strategy,
+            operations=definition.operations, seed=sort_seed,
+        )
 
     if dry_run:
         _print_dry_run(cases, definition, output)

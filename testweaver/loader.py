@@ -75,6 +75,7 @@ def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
             fault_for=meta.get('fault_for'),
             terminal=meta.get('terminal', True),
             timeout=meta.get('timeout'),
+            priority=meta.get('priority', 0),
         )
         logger.debug("Extracted operation: %s (type=%s)", name, op.type)
         results.append((op, obj))

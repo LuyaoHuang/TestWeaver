@@ -22,6 +22,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Scalability controls** — prevent combinatorial explosion with `max_graph_nodes`, `max_path_depth`, and `max_state_depth` limits on graph building and case generation
 - **Retry / flaky test handling** — automatic retries for failed cases with `--retries` and `--retry-delay`; flaky detection when a case fails then passes on retry
 - **Lifecycle hooks** — `@suite_setup` / `@suite_teardown` run once before/after all cases; `@case_setup` / `@case_teardown` run before/after each case; teardown hooks always fire, even on failure
+- **Case prioritization** — sort generated cases by strategy (`shortest`, `longest`, `target`, `total`, `fault-first`, `fault-last`, `random`) with `--sort`; assign operation priorities with `@priority(level)`
 - **Logging infrastructure** — structured logging with `--verbose`, `--debug`, and `--log-file` flags; thread-aware output for parallel execution
 - **Built-in analysis** — failure detection, debug suggestions, and performance summaries
 
@@ -127,6 +128,8 @@ testweaver run my_test.yaml -w 4     # Run tests with 4 parallel workers
 testweaver run my_test.yaml --retries 3  # Retry failed cases up to 3 times
 testweaver run my_test.yaml --dry-run     # Preview what would run without executing
 testweaver run my_test.yaml -k "check-*"  # Run only cases matching a pattern
+testweaver run my_test.yaml --sort shortest    # Run shortest cases first
+testweaver generate my_test.yaml --sort target # Sort by operation priority
 testweaver run my_test.yaml -v       # Show execution logs on stderr
 testweaver run my_test.yaml --debug --log-file run.log  # Debug logs to file
 testweaver graph my_test.yaml        # Show dependency graph
@@ -148,6 +151,7 @@ An operation is a single test step with dependency declarations:
 | `excludes` | States that must NOT be active (prevents duplicates) |
 | `grafts` | Copy a subtree (`src` -> `tgt`) |
 | `cuts` | Remove an entire subtree |
+| `priority` | Integer priority level for case sorting (default: 0, higher = more important) |
 | `run` | Shell command to execute (YAML-only mode) |
 | `verify` | Shell command to verify the operation succeeded (runs after `run`) |
 
@@ -174,6 +178,7 @@ An operation is a single test step with dependency declarations:
 | `@case_setup` | Run before each test case (lifecycle hook) |
 | `@case_teardown` | Run after each test case (lifecycle hook) |
 | `@timeout(seconds)` | Set per-operation timeout, overriding the global `--timeout` |
+| `@priority(level)` | Set operation priority for case sorting (higher = more important) |
 
 ### Hierarchical State
 
@@ -513,8 +518,10 @@ See [docs/examples.md](docs/examples.md#multi-instance-namespaces) for full exam
 
 ```bash
 testweaver validate <file> [-v] [--debug]           # Validate definition
-testweaver generate <file> [--format json|text] [-p key=value] [-v]  # Generate cases
+testweaver generate <file> [--format json|text] [-p key=value] [-s strategy] [-v]  # Generate cases
 testweaver run <file> [-o file] [--timeout 300] [-w 4] [-p key=value]  # Run tests
+               [-s shortest|longest|target|total|fault-first|fault-last|random]
+               [--sort-seed N]                   # Sort cases by strategy
                [--retries N] [--retry-delay S]       # Retry failed cases
                [--format json|text|junit|tap|html]
                [--dry-run]                           # Preview without executing
@@ -550,6 +557,96 @@ testweaver run <file> -k "check-*" --no-fault        # Combine filters (AND)
 
 All filter types are AND-combined: a case must match every specified criterion. Within each repeatable option, matching is OR (match any).
 
+## Case Prioritization
+
+By default, test cases run in generation order. Use `--sort` / `-s` to reorder them by strategy. Available on both `generate` and `run`.
+
+```bash
+testweaver run my_test.yaml --sort shortest          # Shortest cases first (smoke tests)
+testweaver run my_test.yaml --sort longest            # Longest cases first (integration)
+testweaver run my_test.yaml --sort target             # By target operation priority
+testweaver run my_test.yaml --sort total              # By sum of all step priorities
+testweaver run my_test.yaml --sort fault-first        # Fault cases before normal
+testweaver run my_test.yaml --sort fault-last         # Normal cases before fault
+testweaver run my_test.yaml --sort random             # Randomize order
+testweaver run my_test.yaml --sort random --sort-seed 42  # Reproducible random
+```
+
+| Strategy | Description |
+|----------|-------------|
+| `shortest` | Fewer steps first — run quick smoke tests before longer paths |
+| `longest` | More steps first — thorough integration tests first |
+| `target` | Sort by target operation's `priority` value (descending) |
+| `total` | Sort by sum of all step priorities (descending) |
+| `fault-first` | Fault-injection cases before normal cases |
+| `fault-last` | Normal cases before fault-injection cases |
+| `random` | Shuffle order (use `--sort-seed` for reproducibility) |
+
+### Operation Priority
+
+Assign priority levels to operations with `@priority`. Higher values mean more important. The `target` and `total` sort strategies use these values.
+
+```python
+from testweaver import action, check, provides, requires, priority
+
+@action
+@priority(1)
+@provides('config')
+def basic_setup(params):
+    pass
+
+@action
+@priority(5)
+@provides('config.advanced')
+@requires('config')
+def advanced_setup(params):
+    pass
+
+@check
+@priority(10)
+@requires('config')
+def critical_check(params):
+    pass
+```
+
+In YAML:
+
+```yaml
+operations:
+  - name: basic_setup
+    type: action
+    provides: [config]
+    priority: 1
+
+  - name: critical_check
+    type: check
+    requires: [config]
+    priority: 10
+```
+
+With `--sort target`, cases targeting `critical_check` (priority 10) run before cases targeting lower-priority operations.
+
+### Pipeline
+
+Sorting applies after filtering: generate -> filter -> sort -> run. This means you can combine `--sort` with all filter options:
+
+```bash
+testweaver run my_test.yaml --no-fault --sort shortest -k "check-*"
+```
+
+### Programmatic API
+
+```python
+from testweaver.sorting import sort_cases
+from testweaver.graph import generate_cases
+
+cases = generate_cases(definition)
+sorted_cases = sort_cases(cases, "target", operations=definition.operations)
+sorted_cases = sort_cases(cases, "random", seed=42)
+```
+
+See [docs/examples.md](docs/examples.md#case-prioritization) for more examples.
+
 ## Parallel Execution
 
 By default, test cases run sequentially. Use `--workers` / `-w` to run independent cases concurrently:
@@ -576,11 +673,13 @@ Results are always returned in the same order as the generated cases, regardless
 ```python
 from testweaver.engine import run_all
 from testweaver.filtering import filter_cases
+from testweaver.sorting import sort_cases
 from testweaver.graph import build_graph, generate_cases
 
 graph = build_graph(definition.operations)
 cases = generate_cases(definition, graph)
 cases = filter_cases(cases, ids=["check-*"], no_fault=True)
+cases = sort_cases(cases, "shortest")  # optional: reorder before execution
 results, suite_hooks = run_all(cases, definition, graph=graph, workers=4)
 ```
 

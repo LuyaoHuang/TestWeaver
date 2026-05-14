@@ -13,6 +13,7 @@ from testweaver.decorators import (
     excludes,
     fault_for,
     graft,
+    priority,
     provides,
     requires,
     setup,
@@ -26,3 +27,4 @@ from testweaver.decorators import (
 )
 from testweaver.filtering import filter_cases
 from testweaver.modifiers import EdgeGuard, TransientHook, TransitionObserver
+from testweaver.sorting import sort_cases

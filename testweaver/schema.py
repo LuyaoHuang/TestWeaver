@@ -95,6 +95,7 @@ class Operation(BaseModel):
     param_provider: str | None = Field(default=None, exclude=True)
     fault_for: str | None = Field(default=None)
     terminal: bool = True
+    priority: int = 0
     instance_params: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     @model_validator(mode="after")
@@ -367,6 +368,7 @@ class TestCase(BaseModel):
     description: str = ""
     params: dict[str, Any] = Field(default_factory=dict)
     is_fault: bool = False
+    priority: float = 0.0
 
 
 def _load_definition_from_module(path: Path) -> TestDefinition:
