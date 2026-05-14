@@ -18,6 +18,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Graph visualization** — export dependency graphs as DOT (Graphviz) or Mermaid for visual exploration
 - **Parallel test execution** — run independent test cases concurrently with `--workers`
 - **Test case filtering** — select cases by ID pattern, target, step, or fault status with `-k`, `--target`, `--has-step`, `--fault-only`, `--no-fault`
+- **Retry / flaky test handling** — automatic retries for failed cases with `--retries` and `--retry-delay`; flaky detection when a case fails then passes on retry
 - **Logging infrastructure** — structured logging with `--verbose`, `--debug`, and `--log-file` flags; thread-aware output for parallel execution
 - **Built-in analysis** — failure detection, debug suggestions, and performance summaries
 
@@ -120,6 +121,7 @@ testweaver run my_test.yaml          # Run tests (JSON output)
 testweaver run my_test.yaml --format junit -o results.xml  # JUnit XML for CI
 testweaver run my_test.yaml --format html -o report.html   # HTML report
 testweaver run my_test.yaml -w 4     # Run tests with 4 parallel workers
+testweaver run my_test.yaml --retries 3  # Retry failed cases up to 3 times
 testweaver run my_test.yaml -k "check-*"  # Run only cases matching a pattern
 testweaver run my_test.yaml -v       # Show execution logs on stderr
 testweaver run my_test.yaml --debug --log-file run.log  # Debug logs to file
@@ -420,6 +422,7 @@ See [docs/examples.md](docs/examples.md#multi-instance-namespaces) for full exam
 testweaver validate <file> [-v] [--debug]           # Validate definition
 testweaver generate <file> [--format json|text] [-p key=value] [-v]  # Generate cases
 testweaver run <file> [-o file] [--timeout 300] [-w 4] [-p key=value]  # Run tests
+               [--retries N] [--retry-delay S]       # Retry failed cases
                [--format json|text|junit|tap|html]
                [-v] [--debug] [--log-file path]     # Logging options
 testweaver analyze <results.json> [-d file]         # Analyze results
@@ -485,6 +488,71 @@ cases = generate_cases(definition, graph)
 cases = filter_cases(cases, ids=["check-*"], no_fault=True)
 results = run_all(cases, definition, graph=graph, workers=4)
 ```
+
+## Retry / Flaky Test Handling
+
+Infrastructure tests are notoriously flaky — network timeouts, VM boot delays, transient service errors. TestWeaver can automatically retry failed test cases and detect flaky tests.
+
+```bash
+testweaver run my_test.yaml --retries 3                # Retry failed cases up to 3 times
+testweaver run my_test.yaml --retries 2 --retry-delay 5  # Wait 5s between retries
+testweaver run my_test.yaml --retries 2 -w 4           # Works with parallel execution
+```
+
+When a case fails and `--retries` is set, TestWeaver re-runs the entire case (including cleanup) up to N additional times. If the case passes on a retry, it is marked as **flaky** — the final status is "pass", but the `flaky` flag signals unreliable behavior.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--retries` | `0` | Maximum number of retry attempts after the first run |
+| `--retry-delay` | `0.0` | Seconds to wait between retry attempts |
+
+### Output
+
+The text format shows retry information inline:
+
+```
+Total: 5  Passed: 4  Failed: 1  Errors: 0
+Retried: 2
+Flaky: 1
+Duration: 3200ms
+  [PASS] check-1 (150ms)
+  [PASS] check-2 [FLAKY] (retried 1x) (450ms)
+  [FAIL] check-3 (retried 2x) (900ms)
+  [PASS] check-4 (120ms)
+  [PASS] check-5 (100ms)
+```
+
+All structured formats (JSON, JUnit XML, TAP, HTML) include retry metadata. JUnit XML uses `<flakyFailure>` elements (supported by Jenkins) and `<properties>` for retry counts. TAP adds `# FLAKY` directives. HTML reports show a collapsible "Retry attempts" section with per-attempt step details.
+
+### Retry Behavior
+
+- **Case-level retry** — the entire case (all steps + cleanup) runs again from scratch
+- **Cleanup between attempts** — each failed attempt runs cleanup before the next attempt starts
+- **Parallel-safe** — retries happen within each worker thread, no shared state
+- **Final result wins** — `CaseResult.steps` and `status` reflect the last attempt
+- **All attempts recorded** — `CaseResult.attempts` stores every attempt's steps and status
+- **Flaky detection** — `CaseResult.flaky` is `True` when the case ultimately passed but failed on at least one earlier attempt
+
+### Programmatic API
+
+```python
+from testweaver.engine import run_all, run_case_with_retries
+
+# Via run_all (recommended)
+results = run_all(cases, definition, retries=3, retry_delay=2.0)
+
+# Per-case (advanced)
+result = run_case_with_retries(case, definition, retries=2, retry_delay=1.0)
+
+# Inspect retry details
+for r in results:
+    if r.flaky:
+        print(f"{r.case_id} is flaky (retried {r.retry_count}x)")
+    if r.retry_count > 0 and r.status != "pass":
+        print(f"{r.case_id} failed after {r.retry_count + 1} attempts")
+```
+
+See [docs/examples.md](docs/examples.md#retry--flaky-test-handling) for more examples.
 
 ## Logging
 

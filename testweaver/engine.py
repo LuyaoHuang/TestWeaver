@@ -17,6 +17,7 @@ from .env import Env
 from .graph import _render_state_paths, apply_operation
 from .modifiers import EdgeGuard, GraphModifier, TransientHook, TransitionObserver
 from .schema import (
+    AttemptResult,
     CaseResult,
     ObserverResult,
     Operation,
@@ -490,12 +491,95 @@ def run_case(
     )
 
 
+def run_case_with_retries(
+    case: TestCase,
+    definition: TestDefinition,
+    timeout: int = 300,
+    graph: nx.MultiDiGraph | None = None,
+    retries: int = 0,
+    retry_delay: float = 0.0,
+) -> CaseResult:
+    """Run a single test case with optional retries on failure.
+
+    Args:
+        case: The test case to run.
+        definition: Full test definition for operation lookup.
+        timeout: Per-step timeout in seconds.
+        graph: Pre-built graph for replanning on blocked operations.
+        retries: Maximum number of retry attempts after the first run.
+        retry_delay: Seconds to wait between retry attempts.
+
+    Returns:
+        Final case result with retry metadata populated.
+    """
+    overall_start = time.monotonic()
+    attempts: list[AttemptResult] = []
+    result: CaseResult | None = None
+
+    for attempt_num in range(1, retries + 2):
+        if attempt_num > 1:
+            logger.info(
+                "Retrying case '%s' (attempt %d/%d)",
+                case.case_id, attempt_num, retries + 1,
+            )
+            if retry_delay > 0:
+                time.sleep(retry_delay)
+
+        result = run_case(case, definition, timeout, graph)
+
+        attempts.append(AttemptResult(
+            attempt=attempt_num,
+            steps=result.steps,
+            status=result.status,
+            duration_ms=result.duration_ms,
+        ))
+
+        if result.status == "pass":
+            break
+
+    assert result is not None
+    actual_retries = len(attempts) - 1
+    had_failure = any(a.status in ("fail", "error") for a in attempts[:-1])
+    is_flaky = result.status == "pass" and had_failure
+
+    overall_duration = (time.monotonic() - overall_start) * 1000
+
+    final = CaseResult(
+        case_id=case.case_id,
+        steps=result.steps,
+        status=result.status,
+        duration_ms=round(overall_duration, 2),
+        replanned=result.replanned,
+        replan_reason=result.replan_reason,
+        is_fault=result.is_fault,
+        attempts=attempts if actual_retries > 0 else [],
+        flaky=is_flaky,
+        retry_count=actual_retries,
+    )
+
+    if is_flaky:
+        logger.warning(
+            "Case '%s' is flaky: failed %d attempt(s) then passed",
+            case.case_id,
+            sum(1 for a in attempts if a.status != "pass"),
+        )
+    elif actual_retries > 0 and result.status != "pass":
+        logger.warning(
+            "Case '%s' failed after %d attempt(s)",
+            case.case_id, len(attempts),
+        )
+
+    return final
+
+
 def run_all(
     cases: list[TestCase],
     definition: TestDefinition,
     timeout: int = 300,
     graph: nx.MultiDiGraph | None = None,
     workers: int = 1,
+    retries: int = 0,
+    retry_delay: float = 0.0,
 ) -> list[CaseResult]:
     """Run test cases and return their results.
 
@@ -507,6 +591,8 @@ def run_all(
         workers: Number of parallel workers.  ``1`` runs sequentially,
             ``0`` auto-detects based on CPU count, and any value ``>1``
             uses that many threads.
+        retries: Maximum number of retry attempts for each failed case.
+        retry_delay: Seconds to wait between retry attempts.
 
     Returns:
         List of results in the same order as *cases*.
@@ -514,13 +600,28 @@ def run_all(
     if workers == 0:
         workers = os.cpu_count() or 1
 
-    logger.info("Running %d case(s) with %d worker(s)", len(cases), workers)
+    if retries > 0:
+        logger.info(
+            "Running %d case(s) with %d worker(s), max_retries=%d, retry_delay=%.1fs",
+            len(cases), workers, retries, retry_delay,
+        )
+    else:
+        logger.info("Running %d case(s) with %d worker(s)", len(cases), workers)
     start = time.monotonic()
 
     if workers == 1:
-        results = [run_case(case, definition, timeout, graph=graph) for case in cases]
+        results = [
+            run_case_with_retries(
+                case, definition, timeout, graph=graph,
+                retries=retries, retry_delay=retry_delay,
+            )
+            for case in cases
+        ]
     else:
-        runner = partial(run_case, definition=definition, timeout=timeout, graph=graph)
+        runner = partial(
+            run_case_with_retries, definition=definition, timeout=timeout,
+            graph=graph, retries=retries, retry_delay=retry_delay,
+        )
         with ThreadPoolExecutor(max_workers=workers) as pool:
             results = list(pool.map(runner, cases))
 

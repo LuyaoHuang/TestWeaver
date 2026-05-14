@@ -270,6 +270,15 @@ class StepResult(BaseModel):
     observer_results: list[ObserverResult] = Field(default_factory=list)
 
 
+class AttemptResult(BaseModel):
+    """Result of a single attempt at running a test case."""
+
+    attempt: int
+    steps: list[StepResult] = Field(default_factory=list)
+    status: Literal["pass", "fail", "error"] = "pass"
+    duration_ms: float = 0.0
+
+
 class CaseResult(BaseModel):
     """Aggregate result for a single test case."""
 
@@ -280,6 +289,9 @@ class CaseResult(BaseModel):
     replanned: bool = False
     replan_reason: str | None = None
     is_fault: bool = False
+    attempts: list[AttemptResult] = Field(default_factory=list)
+    flaky: bool = False
+    retry_count: int = 0
 
 
 class RunSummary(BaseModel):
@@ -292,6 +304,8 @@ class RunSummary(BaseModel):
     duration_ms: float = 0.0
     failure_patterns: list[str] = Field(default_factory=list)
     slowest_steps: list[dict[str, Any]] = Field(default_factory=list)
+    flaky: int = 0
+    retried: int = 0
 
 
 class FailureDetail(BaseModel):

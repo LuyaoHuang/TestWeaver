@@ -44,6 +44,9 @@ def summarize_run(results: list[CaseResult]) -> RunSummary:
                 all_steps.append({"operation": step.operation, "duration_ms": step.duration_ms})
     all_steps.sort(key=lambda s: s["duration_ms"], reverse=True)
 
+    flaky = sum(1 for r in results if r.flaky)
+    retried = sum(1 for r in results if r.retry_count > 0)
+
     return RunSummary(
         total=total,
         passed=passed,
@@ -52,6 +55,8 @@ def summarize_run(results: list[CaseResult]) -> RunSummary:
         duration_ms=round(duration, 2),
         failure_patterns=failure_patterns,
         slowest_steps=all_steps[:5],
+        flaky=flaky,
+        retried=retried,
     )
 
 

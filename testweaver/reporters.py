@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from xml.dom import minidom
 
-from .schema import CaseResult, RunSummary
+from .schema import AttemptResult, CaseResult, RunSummary
 
 
 def to_junit_xml(
@@ -58,6 +58,31 @@ def to_junit_xml(
             error.set("message", msg)
             error.text = body
 
+        if r.retry_count > 0:
+            tc_props = ET.SubElement(tc, "properties")
+            p = ET.SubElement(tc_props, "property")
+            p.set("name", "retry_count")
+            p.set("value", str(r.retry_count))
+            if r.flaky:
+                p2 = ET.SubElement(tc_props, "property")
+                p2.set("name", "flaky")
+                p2.set("value", "true")
+
+        if r.flaky and r.attempts:
+            for att in r.attempts:
+                if att.status in ("fail", "error"):
+                    flaky_fail = ET.SubElement(tc, "flakyFailure")
+                    flaky_fail.set("type", f"Attempt{att.attempt}")
+                    first_bad = next(
+                        (s for s in att.steps if s.status in ("fail", "error")), None,
+                    )
+                    msg = f"Attempt {att.attempt} {att.status}"
+                    if first_bad:
+                        msg = first_bad.error or msg
+                    flaky_fail.set("message", msg)
+                    if first_bad:
+                        flaky_fail.text = first_bad.stderr or first_bad.error or ""
+
         stdout_parts = [s.stdout for s in r.steps if s.stdout]
         stderr_parts = [s.stderr for s in r.steps if s.stderr]
         if stdout_parts:
@@ -81,14 +106,17 @@ def to_tap(results: list[CaseResult], summary: RunSummary) -> str:
     for i, r in enumerate(results, 1):
         status = "ok" if r.status == "pass" else "not ok"
         fault_tag = " # FAULT" if r.is_fault else ""
-        lines.append(f"{status} {i} - {r.case_id} ({r.duration_ms:.0f}ms){fault_tag}")
+        flaky_tag = " # FLAKY" if r.flaky else ""
+        lines.append(f"{status} {i} - {r.case_id} ({r.duration_ms:.0f}ms){fault_tag}{flaky_tag}")
 
-        if r.status != "pass":
-            first_bad = next(
-                (s for s in r.steps if s.status in ("fail", "error")), None,
-            )
+        if r.status != "pass" or r.retry_count > 0:
+            first_bad = None
+            if r.status != "pass":
+                first_bad = next(
+                    (s for s in r.steps if s.status in ("fail", "error")), None,
+                )
+            lines.append("  ---")
             if first_bad:
-                lines.append("  ---")
                 lines.append(f"  message: '{first_bad.error or first_bad.operation + ' failed'}'")
                 lines.append(f"  severity: {r.status}")
                 lines.append(f"  at:")
@@ -96,11 +124,18 @@ def to_tap(results: list[CaseResult], summary: RunSummary) -> str:
                 if first_bad.stderr:
                     stderr_escaped = first_bad.stderr.replace("'", "''")
                     lines.append(f"  stderr: '{stderr_escaped}'")
-                lines.append("  ...")
+            if r.retry_count > 0:
+                lines.append(f"  retry_count: {r.retry_count}")
+                lines.append(f"  flaky: {str(r.flaky).lower()}")
+            lines.append("  ...")
 
     lines.append(f"# total: {summary.total}")
     lines.append(f"# passed: {summary.passed}")
     lines.append(f"# failed: {summary.failed + summary.errors}")
+    if summary.retried > 0:
+        lines.append(f"# retried: {summary.retried}")
+    if summary.flaky > 0:
+        lines.append(f"# flaky: {summary.flaky}")
     lines.append("")
     return "\n".join(lines)
 
@@ -137,6 +172,7 @@ _HTML_TEMPLATE = """\
   .badge.fail {{ background: #ffdce0; color: #cb2431; }}
   .badge.error {{ background: #fff5b1; color: #e36209; }}
   .badge.fault {{ background: #f1e05a; color: #735c0f; margin-left: 0.5rem; }}
+  .badge.flaky {{ background: #fff5b1; color: #e36209; margin-left: 0.5rem; }}
   details {{ margin-top: 0.25rem; }}
   details summary {{ cursor: pointer; color: #0366d6; font-size: 0.85rem; }}
   .step-list {{ margin: 0.5rem 0 0.5rem 1rem; font-size: 0.85rem; }}
@@ -159,6 +195,7 @@ _HTML_TEMPLATE = """\
     <div class="stat pass"><div class="value">{passed}</div><div class="label">Passed</div></div>
     <div class="stat fail"><div class="value">{failed}</div><div class="label">Failed</div></div>
     <div class="stat error"><div class="value">{errors}</div><div class="label">Errors</div></div>
+    <div class="stat"><div class="value">{flaky}</div><div class="label">Flaky</div></div>
     <div class="stat"><div class="value">{duration}</div><div class="label">Duration</div></div>
   </div>
 </div>
@@ -179,11 +216,9 @@ def _format_duration(ms: float) -> str:
     return f"{ms / 1000:.2f}s"
 
 
-def _build_step_html(r: CaseResult) -> str:
-    if not r.steps:
-        return ""
-    parts = ['<details><summary>Show steps</summary><ul class="step-list">']
-    for s in r.steps:
+def _build_attempt_steps_html(steps: list) -> str:
+    parts = ['<ul class="step-list">']
+    for s in steps:
         cls = f"s-{s.status}"
         label = html.escape(s.operation)
         dur = _format_duration(s.duration_ms)
@@ -193,7 +228,27 @@ def _build_step_html(r: CaseResult) -> str:
         elif s.error:
             parts.append(f'<pre class="output">{html.escape(s.error)}</pre>')
         parts.append("</li>")
-    parts.append("</ul></details>")
+    parts.append("</ul>")
+    return "\n".join(parts)
+
+
+def _build_step_html(r: CaseResult) -> str:
+    parts: list[str] = []
+    if r.attempts and r.retry_count > 0:
+        parts.append('<details><summary>Show retry attempts</summary>')
+        for att in r.attempts:
+            badge_cls = att.status
+            parts.append(
+                f'<div style="margin: 0.5rem 0;">Attempt {att.attempt}: '
+                f'<span class="badge {badge_cls}">{att.status.upper()}</span> '
+                f'({_format_duration(att.duration_ms)})</div>'
+            )
+            parts.append(_build_attempt_steps_html(att.steps))
+        parts.append('</details>')
+    if r.steps:
+        parts.append('<details><summary>Show steps</summary>')
+        parts.append(_build_attempt_steps_html(r.steps))
+        parts.append('</details>')
     return "\n".join(parts)
 
 
@@ -201,7 +256,9 @@ def to_html(results: list[CaseResult], summary: RunSummary) -> str:
     rows: list[str] = []
     for r in results:
         fault_badge = '<span class="badge fault">FAULT</span>' if r.is_fault else ""
-        status_badge = f'<span class="badge {r.status}">{r.status.upper()}</span>{fault_badge}'
+        flaky_badge = '<span class="badge flaky">FLAKY</span>' if r.flaky else ""
+        retry_info = f' <small>(retried {r.retry_count}x)</small>' if r.retry_count > 0 else ""
+        status_badge = f'<span class="badge {r.status}">{r.status.upper()}</span>{fault_badge}{flaky_badge}{retry_info}'
         step_detail = _build_step_html(r)
         rows.append(
             f"<tr>"
@@ -217,6 +274,7 @@ def to_html(results: list[CaseResult], summary: RunSummary) -> str:
         passed=summary.passed,
         failed=summary.failed,
         errors=summary.errors,
+        flaky=summary.flaky,
         duration=_format_duration(summary.duration_ms),
         rows="\n".join(rows),
     )

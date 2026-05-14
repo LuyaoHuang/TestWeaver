@@ -153,6 +153,9 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
               type=click.Choice(["json", "text", "junit", "tap", "html"]), default="json")
 @click.option("--param", "-p", multiple=True, help="Override parameter: key=value")
 @click.option("--workers", "-w", default=1, help="Parallel workers (0=auto, 1=sequential)")
+@click.option("--retries", default=0, help="Number of retries for failed cases (default: 0)")
+@click.option("--retry-delay", default=0.0, type=float,
+              help="Seconds to wait between retry attempts (default: 0)")
 @click.option("--filter", "-k", "filters", multiple=True,
               help="Filter cases by ID pattern (fnmatch glob, repeatable)")
 @click.option("--target", "-t", "filter_targets", multiple=True,
@@ -170,7 +173,8 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
 @click.option("--log-file", type=click.Path(), default=None,
               help="Also write logs to this file")
 def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...],
-        workers: int, filters: tuple[str, ...], filter_targets: tuple[str, ...],
+        workers: int, retries: int, retry_delay: float,
+        filters: tuple[str, ...], filter_targets: tuple[str, ...],
         filter_steps: tuple[str, ...], fault_only: bool, no_fault: bool,
         verbose: bool, debug: bool, log_file: str | None) -> None:
     """Run test cases from a definition file."""
@@ -194,8 +198,10 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
     )
 
     worker_info = f" with {workers} worker(s)" if workers != 1 else ""
-    click.echo(f"Running {len(cases)} test case(s){worker_info}...", err=True)
-    results = run_all(cases, definition, timeout, graph=graph, workers=workers)
+    retry_info = f", {retries} retries" if retries > 0 else ""
+    click.echo(f"Running {len(cases)} test case(s){worker_info}{retry_info}...", err=True)
+    results = run_all(cases, definition, timeout, graph=graph, workers=workers,
+                      retries=retries, retry_delay=retry_delay)
     summary = summarize_run(results)
 
     if fmt == "json":
@@ -217,11 +223,17 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
         fault_count = sum(1 for r in results if r.is_fault)
         if fault_count:
             click.echo(f"Fault cases: {fault_count}")
+        if summary.retried:
+            click.echo(f"Retried: {summary.retried}")
+        if summary.flaky:
+            click.echo(f"Flaky: {summary.flaky}")
         click.echo(f"Duration: {summary.duration_ms:.0f}ms")
         for r in results:
             status_icon = "PASS" if r.status == "pass" else "FAIL"
             fault_tag = " [FAULT]" if r.is_fault else ""
-            click.echo(f"  [{status_icon}] {r.case_id}{fault_tag} ({r.duration_ms:.0f}ms)")
+            flaky_tag = " [FLAKY]" if r.flaky else ""
+            retry_tag = f" (retried {r.retry_count}x)" if r.retry_count > 0 else ""
+            click.echo(f"  [{status_icon}] {r.case_id}{fault_tag}{flaky_tag}{retry_tag} ({r.duration_ms:.0f}ms)")
         rendered = None
 
     if rendered is not None:
