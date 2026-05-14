@@ -19,6 +19,7 @@ from .modifiers import EdgeGuard, GraphModifier, TransientHook, TransitionObserv
 from .schema import (
     AttemptResult,
     CaseResult,
+    HookResult,
     ObserverResult,
     Operation,
     StepResult,
@@ -87,6 +88,50 @@ def _parse_instance_params(step_name: str) -> tuple[str, dict[str, Any]]:
         k, v = pair.strip().split('=', 1)
         instance_params[k] = v
     return base, instance_params
+
+
+def _run_lifecycle_hook(
+    func: Callable[..., Any],
+    hook_type: str,
+    context: dict[str, Any],
+) -> HookResult:
+    """Execute a single lifecycle hook and return its result."""
+    name = getattr(func, '__qualname__', getattr(func, '__name__', hook_type))
+    logger.info("Running %s hook: %s", hook_type, name)
+    start = time.monotonic()
+    try:
+        func(context)
+        duration = (time.monotonic() - start) * 1000
+        logger.info("Hook %s passed (%.0fms)", name, duration)
+        return HookResult(
+            hook_name=name,
+            hook_type=hook_type,
+            status="pass",
+            duration_ms=round(duration, 2),
+        )
+    except Exception as e:
+        duration = (time.monotonic() - start) * 1000
+        logger.error("Hook %s failed: %s (%.0fms)", name, e, duration)
+        return HookResult(
+            hook_name=name,
+            hook_type=hook_type,
+            status="error",
+            error=str(e),
+            duration_ms=round(duration, 2),
+        )
+
+
+def _run_hooks(
+    hooks: list[Callable[..., Any]],
+    hook_type: str,
+    context: dict[str, Any],
+) -> list[HookResult]:
+    """Run a list of lifecycle hooks in order, collecting results."""
+    results = []
+    for func in hooks:
+        result = _run_lifecycle_hook(func, hook_type, context)
+        results.append(result)
+    return results
 
 
 def run_step(
@@ -336,7 +381,7 @@ def run_case(
     start = time.monotonic()
 
     blocked_ops: set[str] = set()
-    hooks: list[TransientHook] = []
+    transient_hooks: list[TransientHook] = []
     observers: list[TransitionObserver] = []
     current_env = Env()
 
@@ -345,137 +390,156 @@ def run_case(
     max_replans = 3
     replan_count = 0
 
-    main_idx = 0
-    while main_idx < len(remaining_main):
-        step_name = remaining_main[main_idx]
-        op = ops_by_name.get(step_name)
-        instance_params: dict[str, Any] = {}
+    lc_hook_results: list[HookResult] = []
 
-        if op is None and '[' in step_name:
-            base_name, instance_params = _parse_instance_params(step_name)
-            op = ops_by_name.get(base_name)
-            if op is not None:
-                op = _render_state_paths(op, instance_params)
-
-        if op is None:
-            step_results.append(StepResult(
-                operation=step_name,
-                status="error",
-                error=f"Unknown operation '{step_name}'",
-            ))
+    case_context = {**params, '_case': case, '_case_id': case.case_id}
+    if definition.hooks.case_setup:
+        setup_results = _run_hooks(
+            definition.hooks.case_setup, "case_setup", case_context,
+        )
+        lc_hook_results.extend(setup_results)
+        if any(r.status != "pass" for r in setup_results):
             case_status = "error"
-            break
 
-        # Check edge guards
-        if step_name in blocked_ops:
-            logger.debug("Operation '%s' is blocked by edge guard", step_name)
-            if graph is None or replan_count >= max_replans:
-                msg = "No graph for replan" if graph is None else "Max replans exceeded"
-                logger.debug("Cannot replan: %s", msg)
+    try:
+        main_idx = 0
+        while main_idx < len(remaining_main) and case_status == "pass":
+            step_name = remaining_main[main_idx]
+            op = ops_by_name.get(step_name)
+            instance_params: dict[str, Any] = {}
+
+            if op is None and '[' in step_name:
+                base_name, instance_params = _parse_instance_params(step_name)
+                op = ops_by_name.get(base_name)
+                if op is not None:
+                    op = _render_state_paths(op, instance_params)
+
+            if op is None:
                 step_results.append(StepResult(
                     operation=step_name,
                     status="error",
-                    error=f"Operation blocked: {msg}",
+                    error=f"Unknown operation '{step_name}'",
                 ))
                 case_status = "error"
                 break
 
-            target_op = ops_by_name.get(case.target)
-            new_steps = _replan_remaining(current_env, target_op, graph, blocked_ops)
-            if new_steps is None:
-                logger.debug("Replan failed: no alternative path found")
-                step_results.append(StepResult(
-                    operation=step_name,
-                    status="error",
-                    error="Replan failed: no alternative path",
-                ))
-                case_status = "error"
-                break
-
-            logger.info("Replanned around '%s': new path %s", step_name, new_steps)
-            remaining_main = new_steps + [case.target]
-            main_idx = 0
-            replan_count += 1
-            replanned = True
-            replan_reason = f"Blocked: {step_name}"
-            continue
-
-        # Fire transient hooks
-        fired = [h for h in hooks if h.before_op == step_name]
-        for hook in fired:
-            logger.debug("Firing transient hook before '%s': %s", step_name, hook.reason)
-            hook_result = _run_hook(hook, params)
-            step_results.append(hook_result)
-            hooks.remove(hook)
-            if hook_result.status in ("fail", "error"):
-                case_status = hook_result.status
-                break
-        if case_status != "pass":
-            break
-
-        # Execute the step with per-step params (instance values merged)
-        step_params = dict(params)
-        if instance_params:
-            step_params.update(instance_params)
-        result, modifier = run_step(op, step_params, timeout)
-        step_results.append(result)
-
-        # Run verify if step passed
-        if result.status == "pass":
-            verify_result = _run_verify(op, step_params, timeout)
-            if verify_result is not None:
-                result.verify_result = verify_result
-                if verify_result.status != "pass":
-                    case_status = verify_result.status
+            # Check edge guards
+            if step_name in blocked_ops:
+                logger.debug("Operation '%s' is blocked by edge guard", step_name)
+                if graph is None or replan_count >= max_replans:
+                    msg = "No graph for replan" if graph is None else "Max replans exceeded"
+                    logger.debug("Cannot replan: %s", msg)
+                    step_results.append(StepResult(
+                        operation=step_name,
+                        status="error",
+                        error=f"Operation blocked: {msg}",
+                    ))
+                    case_status = "error"
                     break
 
-        # Update env tracking
-        new_env = apply_operation(current_env, op)
-        if new_env is not None:
-            current_env = new_env
+                target_op = ops_by_name.get(case.target)
+                new_steps = _replan_remaining(current_env, target_op, graph, blocked_ops)
+                if new_steps is None:
+                    logger.debug("Replan failed: no alternative path found")
+                    step_results.append(StepResult(
+                        operation=step_name,
+                        status="error",
+                        error="Replan failed: no alternative path",
+                    ))
+                    case_status = "error"
+                    break
 
-        # Process modifier
-        if modifier is not None:
-            logger.debug("Modifier returned from '%s': %s", step_name, type(modifier).__name__)
-            if isinstance(modifier, EdgeGuard):
-                blocked_ops.add(modifier.blocked_op)
-            elif isinstance(modifier, TransientHook):
-                hooks.append(modifier)
-            elif isinstance(modifier, TransitionObserver):
-                observers.append(modifier)
+                logger.info("Replanned around '%s': new path %s", step_name, new_steps)
+                remaining_main = new_steps + [case.target]
+                main_idx = 0
+                replan_count += 1
+                replanned = True
+                replan_reason = f"Blocked: {step_name}"
+                continue
 
-        # Run transition observers
-        matching = [o for o in observers if step_name in o.watch_ops]
-        for obs in matching:
-            obs_result = _run_observer(obs, params)
-            result.observer_results.append(obs_result)
-            if obs_result.status in ("fail", "error"):
-                case_status = obs_result.status
+            # Fire transient hooks
+            fired = [h for h in transient_hooks if h.before_op == step_name]
+            for hook in fired:
+                logger.debug("Firing transient hook before '%s': %s", step_name, hook.reason)
+                hook_result = _run_hook(hook, params)
+                step_results.append(hook_result)
+                transient_hooks.remove(hook)
+                if hook_result.status in ("fail", "error"):
+                    case_status = hook_result.status
+                    break
+            if case_status != "pass":
                 break
 
-        if result.status in ("fail", "error"):
-            case_status = result.status
+            # Execute the step with per-step params (instance values merged)
+            step_params = dict(params)
+            if instance_params:
+                step_params.update(instance_params)
+            result, modifier = run_step(op, step_params, timeout)
+            step_results.append(result)
 
-        if case_status != "pass":
-            break
+            # Run verify if step passed
+            if result.status == "pass":
+                verify_result = _run_verify(op, step_params, timeout)
+                if verify_result is not None:
+                    result.verify_result = verify_result
+                    if verify_result.status != "pass":
+                        case_status = verify_result.status
+                        break
 
-        main_idx += 1
+            # Update env tracking
+            new_env = apply_operation(current_env, op)
+            if new_env is not None:
+                current_env = new_env
 
-    # Cleanup phase — no modifier processing
-    if case_status != "pass" or cleanup_steps:
-        logger.debug("Entering cleanup phase (%d steps)", len(cleanup_steps))
-        for cleanup_name in cleanup_steps:
-            cleanup_op = ops_by_name.get(cleanup_name)
-            cleanup_params = dict(params)
-            if cleanup_op is None and '[' in cleanup_name:
-                base, inst_params = _parse_instance_params(cleanup_name)
-                cleanup_op = ops_by_name.get(base)
-                if cleanup_op is not None:
-                    cleanup_op = _render_state_paths(cleanup_op, inst_params)
-                    cleanup_params.update(inst_params)
-            if cleanup_op:
-                cleanup_result, _ = run_step(cleanup_op, cleanup_params, timeout)
-                step_results.append(cleanup_result)
+            # Process modifier
+            if modifier is not None:
+                logger.debug("Modifier returned from '%s': %s", step_name, type(modifier).__name__)
+                if isinstance(modifier, EdgeGuard):
+                    blocked_ops.add(modifier.blocked_op)
+                elif isinstance(modifier, TransientHook):
+                    transient_hooks.append(modifier)
+                elif isinstance(modifier, TransitionObserver):
+                    observers.append(modifier)
+
+            # Run transition observers
+            matching = [o for o in observers if step_name in o.watch_ops]
+            for obs in matching:
+                obs_result = _run_observer(obs, params)
+                result.observer_results.append(obs_result)
+                if obs_result.status in ("fail", "error"):
+                    case_status = obs_result.status
+                    break
+
+            if result.status in ("fail", "error"):
+                case_status = result.status
+
+            if case_status != "pass":
+                break
+
+            main_idx += 1
+
+        # Cleanup phase — no modifier processing
+        if case_status != "pass" or cleanup_steps:
+            logger.debug("Entering cleanup phase (%d steps)", len(cleanup_steps))
+            for cleanup_name in cleanup_steps:
+                cleanup_op = ops_by_name.get(cleanup_name)
+                cleanup_params = dict(params)
+                if cleanup_op is None and '[' in cleanup_name:
+                    base, inst_params = _parse_instance_params(cleanup_name)
+                    cleanup_op = ops_by_name.get(base)
+                    if cleanup_op is not None:
+                        cleanup_op = _render_state_paths(cleanup_op, inst_params)
+                        cleanup_params.update(inst_params)
+                if cleanup_op:
+                    cleanup_result, _ = run_step(cleanup_op, cleanup_params, timeout)
+                    step_results.append(cleanup_result)
+    finally:
+        if definition.hooks.case_teardown:
+            teardown_results = _run_hooks(
+                definition.hooks.case_teardown, "case_teardown",
+                {**case_context, '_status': case_status},
+            )
+            lc_hook_results.extend(teardown_results)
 
     duration = (time.monotonic() - start) * 1000
     logger.info("Case finished: %s status=%s (%.0fms)", case.case_id, case_status, duration)
@@ -488,6 +552,7 @@ def run_case(
         replanned=replanned,
         replan_reason=replan_reason,
         is_fault=case.is_fault,
+        hook_results=lc_hook_results,
     )
 
 
@@ -555,6 +620,7 @@ def run_case_with_retries(
         attempts=attempts if actual_retries > 0 else [],
         flaky=is_flaky,
         retry_count=actual_retries,
+        hook_results=result.hook_results,
     )
 
     if is_flaky:
@@ -580,7 +646,7 @@ def run_all(
     workers: int = 1,
     retries: int = 0,
     retry_delay: float = 0.0,
-) -> list[CaseResult]:
+) -> tuple[list[CaseResult], list[HookResult]]:
     """Run test cases and return their results.
 
     Args:
@@ -595,7 +661,7 @@ def run_all(
         retry_delay: Seconds to wait between retry attempts.
 
     Returns:
-        List of results in the same order as *cases*.
+        Tuple of (case results in same order as *cases*, suite hook results).
     """
     if workers == 0:
         workers = os.cpu_count() or 1
@@ -609,23 +675,60 @@ def run_all(
         logger.info("Running %d case(s) with %d worker(s)", len(cases), workers)
     start = time.monotonic()
 
-    if workers == 1:
-        results = [
-            run_case_with_retries(
-                case, definition, timeout, graph=graph,
-                retries=retries, retry_delay=retry_delay,
-            )
-            for case in cases
-        ]
-    else:
-        runner = partial(
-            run_case_with_retries, definition=definition, timeout=timeout,
-            graph=graph, retries=retries, retry_delay=retry_delay,
+    suite_hook_results: list[HookResult] = []
+    suite_context: dict[str, Any] = dict(definition.suite.params)
+    suite_context['_suite_name'] = definition.suite.name
+    suite_context['_case_count'] = len(cases)
+
+    if definition.hooks.suite_setup:
+        setup_results = _run_hooks(
+            definition.hooks.suite_setup, "suite_setup", suite_context,
         )
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            results = list(pool.map(runner, cases))
+        suite_hook_results.extend(setup_results)
+
+    suite_setup_failed = any(r.status != "pass" for r in suite_hook_results)
+    results: list[CaseResult] = []
+
+    try:
+        if suite_setup_failed:
+            logger.error("Suite setup failed; skipping all cases")
+            results = [
+                CaseResult(
+                    case_id=c.case_id,
+                    status="error",
+                    hook_results=[HookResult(
+                        hook_name="suite_setup_failed",
+                        hook_type="suite_setup",
+                        status="error",
+                        error="Skipped due to suite_setup failure",
+                    )],
+                )
+                for c in cases
+            ]
+        elif workers == 1:
+            results = [
+                run_case_with_retries(
+                    case, definition, timeout, graph=graph,
+                    retries=retries, retry_delay=retry_delay,
+                )
+                for case in cases
+            ]
+        else:
+            runner = partial(
+                run_case_with_retries, definition=definition, timeout=timeout,
+                graph=graph, retries=retries, retry_delay=retry_delay,
+            )
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                results = list(pool.map(runner, cases))
+    finally:
+        if definition.hooks.suite_teardown:
+            teardown_results = _run_hooks(
+                definition.hooks.suite_teardown, "suite_teardown",
+                {**suite_context, '_suite_setup_failed': suite_setup_failed},
+            )
+            suite_hook_results.extend(teardown_results)
 
     duration = (time.monotonic() - start) * 1000
     passed = sum(1 for r in results if r.status == "pass")
     logger.info("Run complete: %d/%d passed (%.0fms)", passed, len(results), duration)
-    return results
+    return results, suite_hook_results

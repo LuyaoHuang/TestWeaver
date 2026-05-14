@@ -200,9 +200,10 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
     worker_info = f" with {workers} worker(s)" if workers != 1 else ""
     retry_info = f", {retries} retries" if retries > 0 else ""
     click.echo(f"Running {len(cases)} test case(s){worker_info}{retry_info}...", err=True)
-    results = run_all(cases, definition, timeout, graph=graph, workers=workers,
-                      retries=retries, retry_delay=retry_delay)
-    summary = summarize_run(results)
+    results, suite_hooks = run_all(cases, definition, timeout, graph=graph,
+                                   workers=workers, retries=retries,
+                                   retry_delay=retry_delay)
+    summary = summarize_run(results, suite_hook_results=suite_hooks)
 
     if fmt == "json":
         data = {

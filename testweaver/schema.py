@@ -142,6 +142,17 @@ class TestSuite(BaseModel):
     generation_strategy: Literal["exhaustive", "pairwise", "representative"] = "exhaustive"
 
 
+class LifecycleHooks(BaseModel):
+    """Container for lifecycle hook callables extracted from test modules."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    suite_setup: list[Callable] = Field(default_factory=list, exclude=True)
+    suite_teardown: list[Callable] = Field(default_factory=list, exclude=True)
+    case_setup: list[Callable] = Field(default_factory=list, exclude=True)
+    case_teardown: list[Callable] = Field(default_factory=list, exclude=True)
+
+
 class TestDefinition(BaseModel):
     """Complete test definition: operations, modules, and suite configuration.
 
@@ -152,6 +163,7 @@ class TestDefinition(BaseModel):
     operations: list[Operation] = Field(default_factory=list)
     modules: list[str] = Field(default_factory=list)
     suite: TestSuite
+    hooks: LifecycleHooks = Field(default_factory=LifecycleHooks)
 
     @model_validator(mode="after")
     def validate_targets_exist(self) -> TestDefinition:
@@ -245,6 +257,16 @@ class TestDefinition(BaseModel):
         return self
 
 
+class HookResult(BaseModel):
+    """Result from a lifecycle hook execution."""
+
+    hook_name: str
+    hook_type: Literal["suite_setup", "suite_teardown", "case_setup", "case_teardown"]
+    status: Literal["pass", "fail", "error"] = "pass"
+    error: str | None = None
+    duration_ms: float = 0.0
+
+
 class ObserverResult(BaseModel):
     """Result from a transition observer or verify callback."""
 
@@ -292,6 +314,7 @@ class CaseResult(BaseModel):
     attempts: list[AttemptResult] = Field(default_factory=list)
     flaky: bool = False
     retry_count: int = 0
+    hook_results: list[HookResult] = Field(default_factory=list)
 
 
 class RunSummary(BaseModel):
@@ -306,6 +329,7 @@ class RunSummary(BaseModel):
     slowest_steps: list[dict[str, Any]] = Field(default_factory=list)
     flaky: int = 0
     retried: int = 0
+    suite_hook_results: list[HookResult] = Field(default_factory=list)
 
 
 class FailureDetail(BaseModel):
@@ -343,7 +367,7 @@ class TestCase(BaseModel):
 
 def _load_definition_from_module(path: Path) -> TestDefinition:
     """Load a test definition from a single Python module file."""
-    from .loader import load_module, extract_operations
+    from .loader import extract_hooks, extract_operations, load_module
     module = load_module(path)
     op_pairs = extract_operations(module)
     operations = []
@@ -353,12 +377,14 @@ def _load_definition_from_module(path: Path) -> TestDefinition:
     targets = [op.name for op in operations if op.type == "check"]
     if not targets:
         targets = [operations[-1].name] if operations else []
+    hook_map = extract_hooks(module)
     return TestDefinition(
         operations=operations,
         suite=TestSuite(
             name=path.stem,
             targets=targets,
         ),
+        hooks=LifecycleHooks(**hook_map),
     )
 
 
@@ -397,7 +423,7 @@ def load_definition(path: str | Path) -> TestDefinition:
     module_paths = data.get('modules', [])
     if module_paths:
         logger.debug("Loading %d external module(s)", len(module_paths))
-        from .loader import load_operations_from_modules
+        from .loader import extract_hooks, load_module, load_operations_from_modules
         op_pairs = load_operations_from_modules(module_paths, base_dir=path.parent)
         module_ops = []
         for op, func in op_pairs:
@@ -413,6 +439,19 @@ def load_definition(path: str | Path) -> TestDefinition:
         for op, func in op_pairs:
             if op.name in op_by_name:
                 op_by_name[op.name].callable = func
+        all_hooks: dict[str, list] = {
+            'suite_setup': [], 'suite_teardown': [],
+            'case_setup': [], 'case_teardown': [],
+        }
+        for mod_path in module_paths:
+            p = Path(mod_path)
+            if not p.is_absolute():
+                p = path.parent / p
+            module = load_module(p)
+            hook_map = extract_hooks(module)
+            for key in all_hooks:
+                all_hooks[key].extend(hook_map[key])
+        defn.hooks = LifecycleHooks(**all_hooks)
         logger.info("Definition loaded: %d operations, targets=%s", len(defn.operations), defn.suite.targets)
         return defn
 

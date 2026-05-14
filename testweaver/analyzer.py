@@ -6,12 +6,16 @@ from .schema import (
     CaseResult,
     DebugSuggestion,
     FailureDetail,
+    HookResult,
     Operation,
     RunSummary,
 )
 
 
-def summarize_run(results: list[CaseResult]) -> RunSummary:
+def summarize_run(
+    results: list[CaseResult],
+    suite_hook_results: list[HookResult] | None = None,
+) -> RunSummary:
     """Compute summary statistics from a list of case results.
 
     Args:
@@ -57,6 +61,7 @@ def summarize_run(results: list[CaseResult]) -> RunSummary:
         slowest_steps=all_steps[:5],
         flaky=flaky,
         retried=retried,
+        suite_hook_results=suite_hook_results or [],
     )
 
 

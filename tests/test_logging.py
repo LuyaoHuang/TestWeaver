@@ -40,7 +40,7 @@ def test_engine_logs_at_info(caplog):
     cases = generate_cases(defn)
 
     with caplog.at_level(logging.INFO, logger="testweaver"):
-        run_all(cases, defn, timeout=10)
+        run_all(cases, defn, timeout=10)  # noqa: result unused
 
     messages = caplog.text
     assert "Case started:" in messages
@@ -56,7 +56,7 @@ def test_engine_silent_at_warning(caplog):
     cases = generate_cases(defn)
 
     with caplog.at_level(logging.WARNING, logger="testweaver"):
-        run_all(cases, defn, timeout=10)
+        run_all(cases, defn, timeout=10)  # noqa: result unused
 
     assert caplog.text == ""
 

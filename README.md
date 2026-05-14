@@ -19,6 +19,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Parallel test execution** — run independent test cases concurrently with `--workers`
 - **Test case filtering** — select cases by ID pattern, target, step, or fault status with `-k`, `--target`, `--has-step`, `--fault-only`, `--no-fault`
 - **Retry / flaky test handling** — automatic retries for failed cases with `--retries` and `--retry-delay`; flaky detection when a case fails then passes on retry
+- **Lifecycle hooks** — `@suite_setup` / `@suite_teardown` run once before/after all cases; `@case_setup` / `@case_teardown` run before/after each case; teardown hooks always fire, even on failure
 - **Logging infrastructure** — structured logging with `--verbose`, `--debug`, and `--log-file` flags; thread-aware output for parallel execution
 - **Built-in analysis** — failure detection, debug suggestions, and performance summaries
 
@@ -165,6 +166,10 @@ An operation is a single test step with dependency declarations:
 | `@when_param(name, value)` | Require a specific parameter value (param graph) |
 | `@unless_param(name, value)` | Exclude when a parameter value is set (param graph) |
 | `@skip_when(**conditions)` | Skip operation when conditions match (param matrix) |
+| `@suite_setup` | Run once before all test cases (lifecycle hook) |
+| `@suite_teardown` | Run once after all test cases (lifecycle hook) |
+| `@case_setup` | Run before each test case (lifecycle hook) |
+| `@case_teardown` | Run after each test case (lifecycle hook) |
 
 ### Hierarchical State
 
@@ -322,6 +327,90 @@ def configure_hugepages(params):
 When the runner hits a blocked step, it queries the graph for an alternative path. The `CaseResult` includes `replanned=True` when this happens.
 
 See [docs/examples.md](docs/examples.md#graph-modifiers) for full documentation and examples of all three modifier types.
+
+## Lifecycle Hooks
+
+Lifecycle hooks run at fixed points in the test execution, outside the dependency graph. Unlike `@setup` / `@cleanup` (which are graph nodes participating in pathfinding), lifecycle hooks always fire at their designated position.
+
+| Hook | When it runs | Scope |
+|------|-------------|-------|
+| `@suite_setup` | Once before the first test case | Suite |
+| `@suite_teardown` | Once after the last test case | Suite |
+| `@case_setup` | Before each test case | Per-case |
+| `@case_teardown` | After each test case | Per-case |
+
+```python
+from testweaver import (
+    action, check, cleanup, provides, requires, clears,
+    suite_setup, suite_teardown, case_setup, case_teardown,
+)
+
+@suite_setup
+def start_test_environment(context):
+    """Provision the test VM pool — runs once before any cases."""
+    print(f"Starting environment for suite: {context['_suite_name']}")
+
+@suite_teardown
+def collect_suite_logs(context):
+    """Gather logs after all cases complete — always runs, even on failure."""
+    print("Collecting suite-level logs...")
+
+@case_setup
+def snapshot_state(context):
+    """Take a state snapshot before each test case."""
+    print(f"Snapshot before case: {context['_case_id']}")
+
+@case_teardown
+def collect_case_logs(context):
+    """Collect per-case logs regardless of outcome."""
+    print(f"Collecting logs for case {context['_case_id']} (status: {context.get('_status')})")
+
+@action
+@provides('ready')
+def setup_service(params):
+    pass
+
+@check
+@requires('ready')
+def verify_service(params):
+    pass
+
+@cleanup
+@requires('ready')
+@clears('ready')
+def teardown_service(params):
+    pass
+```
+
+### Hook Context
+
+All hooks receive a single `context` dict. Suite hooks get suite-level params plus `_suite_name` and `_case_count`. Case hooks get case-level params plus `_case` (the `TestCase` object) and `_case_id`. Teardown hooks additionally get `_status` (case status) or `_suite_setup_failed` (bool).
+
+### Error Semantics
+
+- **Suite setup failure** skips all test cases (marked as `error`); suite teardown still runs
+- **Case setup failure** skips the case's main steps; cleanup and case teardown still run
+- **Teardown failures** are recorded but don't change the case/suite status
+- A failing hook does not prevent other hooks of the same type from running
+
+### Parallel Execution
+
+Suite hooks run in the main thread, outside the `ThreadPoolExecutor`. Case hooks run inside each case's thread. Each case gets its own `context` dict — no shared mutable state.
+
+### Programmatic API
+
+```python
+from testweaver.engine import run_all
+
+# run_all returns (case_results, suite_hook_results)
+results, suite_hooks = run_all(cases, definition, workers=4)
+
+for r in results:
+    for hr in r.hook_results:
+        print(f"  {hr.hook_type}: {hr.status} ({hr.duration_ms:.0f}ms)")
+```
+
+See [docs/examples.md](docs/examples.md#lifecycle-hooks) for more examples.
 
 ## Parameter Support
 
@@ -486,7 +575,7 @@ from testweaver.graph import build_graph, generate_cases
 graph = build_graph(definition.operations)
 cases = generate_cases(definition, graph)
 cases = filter_cases(cases, ids=["check-*"], no_fault=True)
-results = run_all(cases, definition, graph=graph, workers=4)
+results, suite_hooks = run_all(cases, definition, graph=graph, workers=4)
 ```
 
 ## Retry / Flaky Test Handling
@@ -539,7 +628,7 @@ All structured formats (JSON, JUnit XML, TAP, HTML) include retry metadata. JUni
 from testweaver.engine import run_all, run_case_with_retries
 
 # Via run_all (recommended)
-results = run_all(cases, definition, retries=3, retry_delay=2.0)
+results, suite_hooks = run_all(cases, definition, retries=3, retry_delay=2.0)
 
 # Per-case (advanced)
 result = run_case_with_retries(case, definition, retries=2, retry_delay=1.0)
@@ -591,7 +680,7 @@ logging.getLogger("testweaver").setLevel(logging.INFO)
 logging.getLogger("testweaver").addHandler(logging.StreamHandler())
 
 # Now engine, graph, schema, and loader all emit logs
-results = run_all(cases, definition)
+results, suite_hooks = run_all(cases, definition)
 ```
 
 ## Structured Reporting

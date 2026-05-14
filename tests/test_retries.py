@@ -157,21 +157,21 @@ class TestRunAllWithRetries:
     def test_retries_default_zero(self):
         defn = _passing_definition()
         cases = generate_cases(defn)
-        results = run_all(cases, defn, timeout=10, workers=1)
+        results, _ = run_all(cases, defn, timeout=10, workers=1)
         assert all(r.retry_count == 0 for r in results)
         assert all(r.flaky is False for r in results)
 
     def test_parallel_with_retries(self):
         defn, _ = _flaky_definition(fail_count=1)
         cases = generate_cases(defn)
-        results = run_all(cases, defn, timeout=10, workers=2, retries=2)
+        results, _ = run_all(cases, defn, timeout=10, workers=2, retries=2)
         for r in results:
             assert r.status == "pass"
 
     def test_preserves_order_with_retries(self):
         defn = _passing_definition()
         cases = generate_cases(defn)
-        results = run_all(cases, defn, timeout=10, workers=1, retries=1)
+        results, _ = run_all(cases, defn, timeout=10, workers=1, retries=1)
         for case, result in zip(cases, results):
             assert case.case_id == result.case_id
 

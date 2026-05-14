@@ -57,6 +57,8 @@ def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
         if verify_target is not None:
             verify_funcs[verify_target] = obj
             continue
+        if meta.get('hook'):
+            continue
         grafts_raw = meta.get('grafts', [])
         grafts = [GraftDef(**g) for g in grafts_raw]
         op = Operation(
@@ -80,6 +82,34 @@ def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
             op.verify_callable = verify_funcs[op.name]
     logger.info("Extracted %d operation(s) from module", len(results))
     return results
+
+
+def extract_hooks(module: Any) -> dict[str, list[Callable]]:
+    """Extract lifecycle hook functions from a loaded module.
+
+    Scans all functions in *module* for ``_tw_meta`` attributes with
+    a ``'hook'`` key set by lifecycle hook decorators.
+
+    Args:
+        module: A loaded Python module.
+
+    Returns:
+        Dict mapping hook type names to lists of callables.
+    """
+    hooks: dict[str, list[Callable]] = {
+        'suite_setup': [],
+        'suite_teardown': [],
+        'case_setup': [],
+        'case_teardown': [],
+    }
+    for _name, obj in inspect.getmembers(module, inspect.isfunction):
+        meta = getattr(obj, '_tw_meta', None)
+        if meta is None:
+            continue
+        hook_type = meta.get('hook')
+        if hook_type and hook_type in hooks:
+            hooks[hook_type].append(obj)
+    return hooks
 
 
 def load_operations_from_modules(

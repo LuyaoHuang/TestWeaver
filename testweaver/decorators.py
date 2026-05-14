@@ -155,6 +155,34 @@ def skip_when(**conditions: Any) -> Callable:
     return decorator
 
 
+def suite_setup(func: Callable) -> Callable:
+    """Mark a function to run once before all test cases."""
+    meta = _ensure_meta(func)
+    meta['hook'] = 'suite_setup'
+    return func
+
+
+def suite_teardown(func: Callable) -> Callable:
+    """Mark a function to run once after all test cases."""
+    meta = _ensure_meta(func)
+    meta['hook'] = 'suite_teardown'
+    return func
+
+
+def case_setup(func: Callable) -> Callable:
+    """Mark a function to run before each test case."""
+    meta = _ensure_meta(func)
+    meta['hook'] = 'case_setup'
+    return func
+
+
+def case_teardown(func: Callable) -> Callable:
+    """Mark a function to run after each test case."""
+    meta = _ensure_meta(func)
+    meta['hook'] = 'case_teardown'
+    return func
+
+
 def fault_for(operation_name: str, *, terminal: bool = True) -> Callable:
     """Declare this function as a fault scenario for the named operation.
 

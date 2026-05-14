@@ -521,7 +521,7 @@ def test_run_all_passes_graph():
     defn = _make_definition(ops, ["check"], cleanup=False)
     graph = build_graph(ops)
     cases = generate_cases(defn, graph)
-    results = run_all(cases, defn, graph=graph)
+    results, _ = run_all(cases, defn, graph=graph)
     assert len(results) == 1
     assert results[0].status == "pass"
 

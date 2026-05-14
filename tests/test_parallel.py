@@ -42,8 +42,8 @@ def test_workers_1_matches_sequential():
     cases = generate_cases(defn)
     assert len(cases) >= 1
 
-    sequential = run_all(cases, defn, timeout=10, workers=1)
-    parallel = run_all(cases, defn, timeout=10, workers=2)
+    sequential, _ = run_all(cases, defn, timeout=10, workers=1)
+    parallel, _ = run_all(cases, defn, timeout=10, workers=2)
 
     assert len(sequential) == len(parallel)
     for s, p in zip(sequential, parallel):
@@ -54,14 +54,14 @@ def test_workers_1_matches_sequential():
 def test_parallel_workers_2():
     defn = _simple_definition()
     cases = generate_cases(defn)
-    results = run_all(cases, defn, timeout=10, workers=2)
+    results, _ = run_all(cases, defn, timeout=10, workers=2)
     assert all(r.status == "pass" for r in results)
 
 
 def test_workers_0_auto_detects():
     defn = _simple_definition()
     cases = generate_cases(defn)
-    results = run_all(cases, defn, timeout=10, workers=0)
+    results, _ = run_all(cases, defn, timeout=10, workers=0)
     assert len(results) == len(cases)
     assert all(r.status == "pass" for r in results)
 
@@ -69,7 +69,7 @@ def test_workers_0_auto_detects():
 def test_parallel_preserves_order():
     defn = _simple_definition()
     cases = generate_cases(defn)
-    results = run_all(cases, defn, timeout=10, workers=2)
+    results, _ = run_all(cases, defn, timeout=10, workers=2)
     for case, result in zip(cases, results):
         assert case.case_id == result.case_id
 
@@ -81,11 +81,11 @@ def test_parallel_faster_than_sequential():
         cases = cases * 4
 
     start = time.monotonic()
-    run_all(cases, defn, timeout=10, workers=1)
+    run_all(cases, defn, timeout=10, workers=1)  # noqa: result unused
     sequential_time = time.monotonic() - start
 
     start = time.monotonic()
-    run_all(cases, defn, timeout=10, workers=4)
+    run_all(cases, defn, timeout=10, workers=4)  # noqa: result unused
     parallel_time = time.monotonic() - start
 
     assert parallel_time < sequential_time
@@ -111,7 +111,7 @@ def test_parallel_with_callables():
         suite=TestSuite(name="callable_test", targets=["check"]),
     )
     cases = generate_cases(defn)
-    results = run_all(cases, defn, timeout=10, workers=2)
+    results, _ = run_all(cases, defn, timeout=10, workers=2)
     assert all(r.status == "pass" for r in results)
 
 
@@ -119,6 +119,6 @@ def test_parallel_with_graph_replan():
     defn = _simple_definition()
     graph = build_graph(defn.operations)
     cases = generate_cases(defn, graph)
-    results = run_all(cases, defn, timeout=10, graph=graph, workers=2)
+    results, _ = run_all(cases, defn, timeout=10, graph=graph, workers=2)
     assert len(results) == len(cases)
     assert all(r.status == "pass" for r in results)

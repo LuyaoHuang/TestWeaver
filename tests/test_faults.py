@@ -453,7 +453,7 @@ def test_run_all_includes_fault_cases():
     ]
     defn = _make_definition(ops, ["check"])
     cases = generate_cases(defn)
-    results = run_all(cases, defn, timeout=10)
+    results, _ = run_all(cases, defn, timeout=10)
 
     normal_results = [r for r in results if not r.is_fault]
     fault_results = [r for r in results if r.is_fault]
