@@ -18,6 +18,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Graph visualization** — export dependency graphs as DOT (Graphviz) or Mermaid for visual exploration
 - **Parallel test execution** — run independent test cases concurrently with `--workers`
 - **Test case filtering** — select cases by ID pattern, target, step, or fault status with `-k`, `--target`, `--has-step`, `--fault-only`, `--no-fault`
+- **Logging infrastructure** — structured logging with `--verbose`, `--debug`, and `--log-file` flags; thread-aware output for parallel execution
 - **Built-in analysis** — failure detection, debug suggestions, and performance summaries
 
 ## Installation
@@ -120,6 +121,8 @@ testweaver run my_test.yaml --format junit -o results.xml  # JUnit XML for CI
 testweaver run my_test.yaml --format html -o report.html   # HTML report
 testweaver run my_test.yaml -w 4     # Run tests with 4 parallel workers
 testweaver run my_test.yaml -k "check-*"  # Run only cases matching a pattern
+testweaver run my_test.yaml -v       # Show execution logs on stderr
+testweaver run my_test.yaml --debug --log-file run.log  # Debug logs to file
 testweaver graph my_test.yaml        # Show dependency graph
 ```
 
@@ -414,12 +417,13 @@ See [docs/examples.md](docs/examples.md#multi-instance-namespaces) for full exam
 ## CLI Reference
 
 ```bash
-testweaver validate <file>                          # Validate definition
-testweaver generate <file> [--format json|text] [-p key=value]  # Generate cases
+testweaver validate <file> [-v] [--debug]           # Validate definition
+testweaver generate <file> [--format json|text] [-p key=value] [-v]  # Generate cases
 testweaver run <file> [-o file] [--timeout 300] [-w 4] [-p key=value]  # Run tests
-                     [--format json|text|junit|tap|html]
+               [--format json|text|junit|tap|html]
+               [-v] [--debug] [--log-file path]     # Logging options
 testweaver analyze <results.json> [-d file]         # Analyze results
-testweaver graph <file> [--format json|text|dot|mermaid] [-o file]  # Show/export dependency graph
+testweaver graph <file> [--format json|text|dot|mermaid] [-o file] [-v]  # Show/export graph
 testweaver matrix <file> [--format json|text]       # Preview parameter combos
 testweaver schema [--type definition|results|summary|test_case]  # Export JSON Schema
 ```
@@ -480,6 +484,46 @@ graph = build_graph(definition.operations)
 cases = generate_cases(definition, graph)
 cases = filter_cases(cases, ids=["check-*"], no_fault=True)
 results = run_all(cases, definition, graph=graph, workers=4)
+```
+
+## Logging
+
+By default, TestWeaver produces no log output — only structured results on stdout and a brief progress message on stderr. Use logging flags to get execution visibility:
+
+```bash
+testweaver run my_test.yaml -v                    # INFO: case/step start/end, timing, graph stats
+testweaver run my_test.yaml --debug               # DEBUG: commands, return codes, modifiers, env state
+testweaver run my_test.yaml -v --log-file run.log  # Also write logs to a file
+```
+
+| Flag | Level | What it shows |
+|------|-------|---------------|
+| (default) | WARNING | Silent — only timeouts and errors |
+| `--verbose` / `-v` | INFO | Case/step lifecycle, graph build stats, definition loading |
+| `--debug` | DEBUG | Shell commands, return codes, callable names, edge guards, replanning, hooks, observers, cleanup |
+| `--log-file <path>` | — | Write logs to a file (in addition to stderr) |
+
+Logs go to **stderr** so they don't interfere with structured result output on stdout. When running with `--workers > 1`, log lines include the thread name for tracing parallel execution:
+
+```
+2026-05-14 10:30:00,123 INFO  [testweaver.engine] [Thread-1] Case started: check-1 (target=check, steps=3)
+2026-05-14 10:30:00,124 INFO  [testweaver.engine] [Thread-2] Case started: check-2 (target=check, steps=3)
+```
+
+The `--verbose` and `--debug` flags are also available on `validate`, `generate`, and `graph` commands.
+
+### Programmatic Logging
+
+Each module uses Python's standard `logging` with loggers under the `testweaver` namespace. Configure them directly for programmatic use:
+
+```python
+import logging
+
+logging.getLogger("testweaver").setLevel(logging.INFO)
+logging.getLogger("testweaver").addHandler(logging.StreamHandler())
+
+# Now engine, graph, schema, and loader all emit logs
+results = run_all(cases, definition)
 ```
 
 ## Structured Reporting

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -13,6 +14,42 @@ from .filtering import filter_cases
 from .graph import build_graph, explain_graph, export_graph, generate_cases
 from .reporters import to_html, to_junit_xml, to_tap
 from .schema import CaseResult, TestDefinition, export_json_schema, load_definition
+
+
+def _configure_logging(
+    verbose: bool = False,
+    debug: bool = False,
+    log_file: str | None = None,
+    workers: int = 1,
+) -> None:
+    """Set up logging for the testweaver package."""
+    if debug:
+        level = logging.DEBUG
+    elif verbose:
+        level = logging.INFO
+    else:
+        level = logging.WARNING
+
+    tw_logger = logging.getLogger("testweaver")
+    tw_logger.setLevel(level)
+
+    if tw_logger.handlers:
+        return
+
+    if workers > 1:
+        fmt = "%(asctime)s %(levelname)-5s [%(name)s] [%(threadName)s] %(message)s"
+    else:
+        fmt = "%(asctime)s %(levelname)-5s [%(name)s] %(message)s"
+    formatter = logging.Formatter(fmt)
+
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setFormatter(formatter)
+    tw_logger.addHandler(stderr_handler)
+
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(formatter)
+        tw_logger.addHandler(file_handler)
 
 
 def _parse_param_overrides(params: tuple[str, ...]) -> dict[str, str]:
@@ -35,8 +72,11 @@ def main() -> None:
 
 @main.command()
 @click.argument("path", type=click.Path(exists=True))
-def validate(path: str) -> None:
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Show INFO-level logs")
+@click.option("--debug", is_flag=True, default=False, help="Show DEBUG-level logs")
+def validate(path: str, verbose: bool, debug: bool) -> None:
     """Validate a test definition file."""
+    _configure_logging(verbose=verbose, debug=debug)
     try:
         definition = load_definition(path)
         click.echo(json.dumps({
@@ -66,11 +106,14 @@ def validate(path: str) -> None:
               help="Keep only fault-injection cases")
 @click.option("--no-fault", is_flag=True, default=False,
               help="Exclude fault-injection cases")
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Show INFO-level logs")
+@click.option("--debug", is_flag=True, default=False, help="Show DEBUG-level logs")
 def generate(path: str, fmt: str, param: tuple[str, ...],
              filters: tuple[str, ...], filter_targets: tuple[str, ...],
              filter_steps: tuple[str, ...], fault_only: bool,
-             no_fault: bool) -> None:
+             no_fault: bool, verbose: bool, debug: bool) -> None:
     """Generate test cases from a definition file."""
+    _configure_logging(verbose=verbose, debug=debug)
     definition = load_definition(path)
     if param:
         overrides = _parse_param_overrides(param)
@@ -120,10 +163,18 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
               help="Keep only fault-injection cases")
 @click.option("--no-fault", is_flag=True, default=False,
               help="Exclude fault-injection cases")
+@click.option("--verbose", "-v", is_flag=True, default=False,
+              help="Show INFO-level execution logs on stderr")
+@click.option("--debug", is_flag=True, default=False,
+              help="Show DEBUG-level execution logs on stderr")
+@click.option("--log-file", type=click.Path(), default=None,
+              help="Also write logs to this file")
 def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...],
         workers: int, filters: tuple[str, ...], filter_targets: tuple[str, ...],
-        filter_steps: tuple[str, ...], fault_only: bool, no_fault: bool) -> None:
+        filter_steps: tuple[str, ...], fault_only: bool, no_fault: bool,
+        verbose: bool, debug: bool, log_file: str | None) -> None:
     """Run test cases from a definition file."""
+    _configure_logging(verbose=verbose, debug=debug, log_file=log_file, workers=workers)
     definition = load_definition(path)
     if param:
         overrides = _parse_param_overrides(param)
@@ -216,8 +267,11 @@ def analyze(path: str, definition: str | None) -> None:
 @click.option("--format", "fmt",
               type=click.Choice(["json", "text", "dot", "mermaid"]), default="json")
 @click.option("--output", "-o", type=click.Path(), help="Save output to file")
-def show_graph(path: str, fmt: str, output: str | None) -> None:
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Show INFO-level logs")
+@click.option("--debug", is_flag=True, default=False, help="Show DEBUG-level logs")
+def show_graph(path: str, fmt: str, output: str | None, verbose: bool, debug: bool) -> None:
     """Show the dependency graph for a definition file."""
+    _configure_logging(verbose=verbose, debug=debug)
     definition = load_definition(path)
 
     if fmt in ("dot", "mermaid"):

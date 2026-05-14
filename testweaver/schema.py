@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any, Callable, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 class ParamDef(BaseModel):
@@ -367,15 +370,19 @@ def load_definition(path: str | Path) -> TestDefinition:
         SchemaError: If the definition fails validation.
     """
     path = Path(path)
+    logger.info("Loading definition from %s", path)
 
     if path.suffix == '.py':
-        return _load_definition_from_module(path)
+        defn = _load_definition_from_module(path)
+        logger.info("Definition loaded: %d operations, targets=%s", len(defn.operations), defn.suite.targets)
+        return defn
 
     with open(path) as f:
         data = yaml.safe_load(f)
 
     module_paths = data.get('modules', [])
     if module_paths:
+        logger.debug("Loading %d external module(s)", len(module_paths))
         from .loader import load_operations_from_modules
         op_pairs = load_operations_from_modules(module_paths, base_dir=path.parent)
         module_ops = []
@@ -392,9 +399,12 @@ def load_definition(path: str | Path) -> TestDefinition:
         for op, func in op_pairs:
             if op.name in op_by_name:
                 op_by_name[op.name].callable = func
+        logger.info("Definition loaded: %d operations, targets=%s", len(defn.operations), defn.suite.targets)
         return defn
 
-    return TestDefinition.model_validate(data)
+    defn = TestDefinition.model_validate(data)
+    logger.info("Definition loaded: %d operations, targets=%s", len(defn.operations), defn.suite.targets)
+    return defn
 
 
 def export_json_schema(model_type: str = "definition") -> dict[str, Any]:

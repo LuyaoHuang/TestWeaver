@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import logging
 from pathlib import Path
 from typing import Any, Callable
 
 from .schema import GraftDef, Operation
+
+logger = logging.getLogger(__name__)
 
 
 def load_module(path: str | Path) -> Any:
@@ -22,11 +25,13 @@ def load_module(path: str | Path) -> Any:
         ImportError: If the module cannot be loaded.
     """
     path = Path(path).resolve()
+    logger.debug("Loading module from %s", path)
     spec = importlib.util.spec_from_file_location(path.stem, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot load module from {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    logger.info("Loaded module: %s", path.name)
     return module
 
 
@@ -68,10 +73,12 @@ def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
             fault_for=meta.get('fault_for'),
             terminal=meta.get('terminal', True),
         )
+        logger.debug("Extracted operation: %s (type=%s)", name, op.type)
         results.append((op, obj))
     for op, _ in results:
         if op.name in verify_funcs:
             op.verify_callable = verify_funcs[op.name]
+    logger.info("Extracted %d operation(s) from module", len(results))
     return results
 
 

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import re
 from itertools import combinations, product
 from typing import Any
 
 import networkx as nx
+
+logger = logging.getLogger(__name__)
 
 from .env import Env
 from .errors import UnreachableTargetError
@@ -246,6 +249,7 @@ def build_graph(
 
             graph.add_edge(current, new_env, operation=op.name)
 
+    logger.info("Graph built: %d nodes, %d edges", graph.number_of_nodes(), graph.number_of_edges())
     return graph
 
 
@@ -756,6 +760,7 @@ def generate_cases(
         )
         cases.extend(fault_cases)
 
+    logger.info("Generated %d test case(s) (strategy=%s)", len(cases), definition.suite.generation_strategy)
     return cases
 
 

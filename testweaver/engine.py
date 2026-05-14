@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import time
@@ -9,6 +10,8 @@ from string import Template
 from typing import Any, Callable
 
 import networkx as nx
+
+logger = logging.getLogger(__name__)
 
 from .env import Env
 from .graph import _render_state_paths, apply_operation
@@ -31,6 +34,7 @@ def _substitute_params(command: str, params: dict[str, Any]) -> str:
 
 def _run_command(command: str, timeout: int = 300) -> tuple[int, str, str]:
     """Execute a shell command and return exit code, stdout, and stderr."""
+    logger.debug("Executing command: %s (timeout=%ds)", command, timeout)
     try:
         result = subprocess.run(
             command,
@@ -39,10 +43,13 @@ def _run_command(command: str, timeout: int = 300) -> tuple[int, str, str]:
             text=True,
             timeout=timeout,
         )
+        logger.debug("Command exit code: %d", result.returncode)
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
+        logger.warning("Command timed out after %ds: %s", timeout, command)
         return -1, "", f"Command timed out after {timeout}s"
     except Exception as e:
+        logger.debug("Command failed with exception: %s", e)
         return -1, "", str(e)
 
 
@@ -51,10 +58,13 @@ def _run_callable(
     params: dict[str, Any],
 ) -> tuple[bool, str, str, Any]:
     """Call a Python callable with params and capture success, output, and return value."""
+    logger.debug("Calling %s", getattr(func, "__qualname__", func))
     try:
         ret = func(params)
+        logger.debug("Callable succeeded")
         return True, "", "", ret
     except Exception as e:
+        logger.debug("Callable raised %s: %s", type(e).__name__, e)
         return False, "", str(e), None
 
 
@@ -97,6 +107,8 @@ def run_step(
     Returns:
         A tuple of ``(StepResult, optional GraphModifier)``.
     """
+    logger.info("Step started: %s", operation.name)
+
     if operation.callable is not None:
         start = time.monotonic()
         ok, stdout, stderr, ret = _run_callable(operation.callable, params)
@@ -112,10 +124,12 @@ def run_step(
         )
         if modifier is not None:
             _record_modifier(result, modifier)
+        logger.info("Step finished: %s status=%s (%.0fms)", operation.name, result.status, duration)
         return result, modifier
 
     command = _substitute_params(operation.run, params)
     if not command.strip():
+        logger.info("Step skipped (empty command): %s", operation.name)
         return StepResult(operation=operation.name, status="skip"), None
 
     start = time.monotonic()
@@ -129,6 +143,7 @@ def run_step(
         status = "fail"
         error = f"Exit code {returncode}"
 
+    logger.info("Step finished: %s status=%s (%.0fms)", operation.name, status, duration)
     return StepResult(
         operation=operation.name,
         status=status,
@@ -310,6 +325,7 @@ def run_case(
     Returns:
         Aggregate result for the case.
     """
+    logger.info("Case started: %s (target=%s, steps=%d)", case.case_id, case.target, len(case.steps))
     ops_by_name = {op.name: op for op in definition.operations}
     params = dict(case.params) if case.params else dict(definition.suite.params)
     step_results: list[StepResult] = []
@@ -351,8 +367,10 @@ def run_case(
 
         # Check edge guards
         if step_name in blocked_ops:
+            logger.debug("Operation '%s' is blocked by edge guard", step_name)
             if graph is None or replan_count >= max_replans:
                 msg = "No graph for replan" if graph is None else "Max replans exceeded"
+                logger.debug("Cannot replan: %s", msg)
                 step_results.append(StepResult(
                     operation=step_name,
                     status="error",
@@ -364,6 +382,7 @@ def run_case(
             target_op = ops_by_name.get(case.target)
             new_steps = _replan_remaining(current_env, target_op, graph, blocked_ops)
             if new_steps is None:
+                logger.debug("Replan failed: no alternative path found")
                 step_results.append(StepResult(
                     operation=step_name,
                     status="error",
@@ -372,6 +391,7 @@ def run_case(
                 case_status = "error"
                 break
 
+            logger.info("Replanned around '%s': new path %s", step_name, new_steps)
             remaining_main = new_steps + [case.target]
             main_idx = 0
             replan_count += 1
@@ -382,6 +402,7 @@ def run_case(
         # Fire transient hooks
         fired = [h for h in hooks if h.before_op == step_name]
         for hook in fired:
+            logger.debug("Firing transient hook before '%s': %s", step_name, hook.reason)
             hook_result = _run_hook(hook, params)
             step_results.append(hook_result)
             hooks.remove(hook)
@@ -414,6 +435,7 @@ def run_case(
 
         # Process modifier
         if modifier is not None:
+            logger.debug("Modifier returned from '%s': %s", step_name, type(modifier).__name__)
             if isinstance(modifier, EdgeGuard):
                 blocked_ops.add(modifier.blocked_op)
             elif isinstance(modifier, TransientHook):
@@ -440,6 +462,7 @@ def run_case(
 
     # Cleanup phase — no modifier processing
     if case_status != "pass" or cleanup_steps:
+        logger.debug("Entering cleanup phase (%d steps)", len(cleanup_steps))
         for cleanup_name in cleanup_steps:
             cleanup_op = ops_by_name.get(cleanup_name)
             cleanup_params = dict(params)
@@ -454,6 +477,7 @@ def run_case(
                 step_results.append(cleanup_result)
 
     duration = (time.monotonic() - start) * 1000
+    logger.info("Case finished: %s status=%s (%.0fms)", case.case_id, case_status, duration)
 
     return CaseResult(
         case_id=case.case_id,
@@ -490,9 +514,17 @@ def run_all(
     if workers == 0:
         workers = os.cpu_count() or 1
 
-    if workers == 1:
-        return [run_case(case, definition, timeout, graph=graph) for case in cases]
+    logger.info("Running %d case(s) with %d worker(s)", len(cases), workers)
+    start = time.monotonic()
 
-    runner = partial(run_case, definition=definition, timeout=timeout, graph=graph)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        return list(pool.map(runner, cases))
+    if workers == 1:
+        results = [run_case(case, definition, timeout, graph=graph) for case in cases]
+    else:
+        runner = partial(run_case, definition=definition, timeout=timeout, graph=graph)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(runner, cases))
+
+    duration = (time.monotonic() - start) * 1000
+    passed = sum(1 for r in results if r.status == "pass")
+    logger.info("Run complete: %d/%d passed (%.0fms)", passed, len(results), duration)
+    return results
