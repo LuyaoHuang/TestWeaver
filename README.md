@@ -16,6 +16,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Structured JSON output** — every command outputs machine-readable JSON
 - **Graph visualization** — export dependency graphs as DOT (Graphviz) or Mermaid for visual exploration
 - **Parallel test execution** — run independent test cases concurrently with `--workers`
+- **Test case filtering** — select cases by ID pattern, target, step, or fault status with `-k`, `--target`, `--has-step`, `--fault-only`, `--no-fault`
 - **Built-in analysis** — failure detection, debug suggestions, and performance summaries
 
 ## Installation
@@ -115,6 +116,7 @@ testweaver validate my_test.yaml     # Check for errors
 testweaver generate my_test.yaml     # Generate test cases
 testweaver run my_test.yaml          # Run tests
 testweaver run my_test.yaml -w 4     # Run tests with 4 parallel workers
+testweaver run my_test.yaml -k "check-*"  # Run only cases matching a pattern
 testweaver graph my_test.yaml        # Show dependency graph
 ```
 
@@ -418,6 +420,30 @@ testweaver matrix <file> [--format json|text]       # Preview parameter combos
 testweaver schema [--type definition|results|summary|test_case]  # Export JSON Schema
 ```
 
+### Filtering Options
+
+Both `generate` and `run` accept filtering options to select a subset of generated cases:
+
+```bash
+testweaver generate <file> -k "check-*"             # Cases with IDs matching a glob pattern
+testweaver generate <file> -k "check-*" -k "fault-*"  # Multiple patterns (OR)
+testweaver run <file> -t verify_tpm                  # Only cases targeting verify_tpm
+testweaver run <file> --has-step install_swtpm       # Cases containing a specific step
+testweaver run <file> --fault-only                   # Only fault-injection cases
+testweaver run <file> --no-fault                     # Exclude fault-injection cases
+testweaver run <file> -k "check-*" --no-fault        # Combine filters (AND)
+```
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--filter` | `-k` | fnmatch glob pattern on case ID (repeatable, OR) |
+| `--target` | `-t` | Keep cases targeting this operation (repeatable, OR) |
+| `--has-step` | | Keep cases containing this step (repeatable, OR) |
+| `--fault-only` | | Keep only fault-injection cases |
+| `--no-fault` | | Exclude fault-injection cases |
+
+All filter types are AND-combined: a case must match every specified criterion. Within each repeatable option, matching is OR (match any).
+
 ## Parallel Execution
 
 By default, test cases run sequentially. Use `--workers` / `-w` to run independent cases concurrently:
@@ -443,10 +469,12 @@ Results are always returned in the same order as the generated cases, regardless
 
 ```python
 from testweaver.engine import run_all
+from testweaver.filtering import filter_cases
 from testweaver.graph import build_graph, generate_cases
 
 graph = build_graph(definition.operations)
 cases = generate_cases(definition, graph)
+cases = filter_cases(cases, ids=["check-*"], no_fault=True)
 results = run_all(cases, definition, graph=graph, workers=4)
 ```
 

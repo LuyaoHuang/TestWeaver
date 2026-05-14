@@ -9,6 +9,7 @@ import click
 from . import __version__
 from .analyzer import find_failures, suggest_debug, summarize_run
 from .engine import run_all
+from .filtering import filter_cases
 from .graph import build_graph, explain_graph, export_graph, generate_cases
 from .schema import CaseResult, TestDefinition, export_json_schema, load_definition
 
@@ -54,7 +55,20 @@ def validate(path: str) -> None:
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
 @click.option("--param", "-p", multiple=True, help="Override parameter: key=value")
-def generate(path: str, fmt: str, param: tuple[str, ...]) -> None:
+@click.option("--filter", "-k", "filters", multiple=True,
+              help="Filter cases by ID pattern (fnmatch glob, repeatable)")
+@click.option("--target", "-t", "filter_targets", multiple=True,
+              help="Keep only cases targeting these operations (repeatable)")
+@click.option("--has-step", "filter_steps", multiple=True,
+              help="Keep cases containing this step (repeatable)")
+@click.option("--fault-only", is_flag=True, default=False,
+              help="Keep only fault-injection cases")
+@click.option("--no-fault", is_flag=True, default=False,
+              help="Exclude fault-injection cases")
+def generate(path: str, fmt: str, param: tuple[str, ...],
+             filters: tuple[str, ...], filter_targets: tuple[str, ...],
+             filter_steps: tuple[str, ...], fault_only: bool,
+             no_fault: bool) -> None:
     """Generate test cases from a definition file."""
     definition = load_definition(path)
     if param:
@@ -62,6 +76,14 @@ def generate(path: str, fmt: str, param: tuple[str, ...]) -> None:
         definition.suite.params.update(overrides)
 
     cases = generate_cases(definition)
+    cases = filter_cases(
+        cases,
+        ids=list(filters) or None,
+        targets=list(filter_targets) or None,
+        steps=list(filter_steps) or None,
+        fault_only=fault_only,
+        no_fault=no_fault,
+    )
 
     if fmt == "json":
         output = [json.loads(c.model_dump_json()) for c in cases]
@@ -86,7 +108,19 @@ def generate(path: str, fmt: str, param: tuple[str, ...]) -> None:
 @click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
 @click.option("--param", "-p", multiple=True, help="Override parameter: key=value")
 @click.option("--workers", "-w", default=1, help="Parallel workers (0=auto, 1=sequential)")
-def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...], workers: int) -> None:
+@click.option("--filter", "-k", "filters", multiple=True,
+              help="Filter cases by ID pattern (fnmatch glob, repeatable)")
+@click.option("--target", "-t", "filter_targets", multiple=True,
+              help="Keep only cases targeting these operations (repeatable)")
+@click.option("--has-step", "filter_steps", multiple=True,
+              help="Keep cases containing this step (repeatable)")
+@click.option("--fault-only", is_flag=True, default=False,
+              help="Keep only fault-injection cases")
+@click.option("--no-fault", is_flag=True, default=False,
+              help="Exclude fault-injection cases")
+def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...],
+        workers: int, filters: tuple[str, ...], filter_targets: tuple[str, ...],
+        filter_steps: tuple[str, ...], fault_only: bool, no_fault: bool) -> None:
     """Run test cases from a definition file."""
     definition = load_definition(path)
     if param:
@@ -97,6 +131,14 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
     param_choices = definition.suite.param_choices or None
     graph = build_graph(definition.operations, param_choices=param_choices)
     cases = generate_cases(definition, graph)
+    cases = filter_cases(
+        cases,
+        ids=list(filters) or None,
+        targets=list(filter_targets) or None,
+        steps=list(filter_steps) or None,
+        fault_only=fault_only,
+        no_fault=no_fault,
+    )
 
     worker_info = f" with {workers} worker(s)" if workers != 1 else ""
     click.echo(f"Running {len(cases)} test case(s){worker_info}...", err=True)

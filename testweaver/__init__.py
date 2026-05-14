@@ -19,4 +19,5 @@ from testweaver.decorators import (
     verify_for,
     when_param,
 )
+from testweaver.filtering import filter_cases
 from testweaver.modifiers import EdgeGuard, TransientHook, TransitionObserver
