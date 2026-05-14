@@ -68,7 +68,8 @@ def generate(path: str, fmt: str, param: tuple[str, ...]) -> None:
         click.echo(json.dumps(output, indent=2))
     else:
         for case in cases:
-            click.echo(f"\n--- {case.case_id} ---")
+            fault_tag = " [FAULT]" if case.is_fault else ""
+            click.echo(f"\n--- {case.case_id}{fault_tag} ---")
             click.echo(f"Target: {case.target}")
             if case.params:
                 click.echo(f"Params: {case.params}")
@@ -113,10 +114,14 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
     else:
         click.echo(f"\nTotal: {summary.total}  Passed: {summary.passed}  "
                     f"Failed: {summary.failed}  Errors: {summary.errors}")
+        fault_count = sum(1 for r in results if r.is_fault)
+        if fault_count:
+            click.echo(f"Fault cases: {fault_count}")
         click.echo(f"Duration: {summary.duration_ms:.0f}ms")
         for r in results:
             status_icon = "PASS" if r.status == "pass" else "FAIL"
-            click.echo(f"  [{status_icon}] {r.case_id} ({r.duration_ms:.0f}ms)")
+            fault_tag = " [FAULT]" if r.is_fault else ""
+            click.echo(f"  [{status_icon}] {r.case_id}{fault_tag} ({r.duration_ms:.0f}ms)")
 
 
 @main.command()
@@ -173,6 +178,15 @@ def show_graph(path: str, fmt: str) -> None:
             status = "reachable" if reach["reachable"] else "UNREACHABLE"
             click.echo(f"  {name}: {status} (from {reach['reachable_from_n_states']} state(s))")
 
+        if "fault_operations" in info:
+            click.echo("\nFault operations:")
+            for f in info["fault_operations"]:
+                status = f"triggerable from {f['triggerable_from_n_states']} state(s)"
+                click.echo(f"  {f['name']} (fault for {f['fault_for']}): {status}")
+                if f['extra_requires']:
+                    click.echo(f"    extra requires: {f['extra_requires']}")
+                if f['extra_excludes']:
+                    click.echo(f"    extra excludes: {f['extra_excludes']}")
         if "param_choices" in info:
             click.echo("\nParameter choices:")
             for pc in info["param_choices"]:

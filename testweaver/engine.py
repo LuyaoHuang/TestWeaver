@@ -459,6 +459,7 @@ def run_case(
         duration_ms=round(duration, 2),
         replanned=replanned,
         replan_reason=replan_reason,
+        is_fault=case.is_fault,
     )
 
 

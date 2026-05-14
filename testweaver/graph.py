@@ -232,7 +232,7 @@ def build_graph(
     while queue:
         current = queue.pop(0)
         for op in operations:
-            if op.type == "check":
+            if op.type in ("check", "fault"):
                 continue
 
             new_env = apply_operation(current, op)
@@ -492,6 +492,164 @@ def _generate_cases_single(
     return all_cases
 
 
+def _generate_fault_cases(
+    definition: TestDefinition,
+    graph: nx.MultiDiGraph,
+    base_params: dict[str, Any],
+    all_ops: list[Operation] | None = None,
+) -> list[TestCase]:
+    """Generate test cases for fault operations.
+
+    For each fault operation, finds graph nodes where both the target
+    operation's preconditions and the fault's extra conditions are met,
+    then generates cases that reach those nodes and execute the fault
+    handler instead of the target.
+    """
+    if all_ops is None:
+        all_ops = definition.operations
+    ops_by_name = {op.name: op for op in all_ops}
+    all_pc = definition.suite.param_choices or []
+    has_exclusive_choices = bool([pc for pc in all_pc if pc.mode != 'additive'])
+    has_any_choices = bool(all_pc)
+    fault_cases: list[TestCase] = []
+
+    fault_ops = [op for op in all_ops if op.type == 'fault']
+    if not fault_ops:
+        return []
+
+    initial = Env()
+
+    for fault_op in fault_ops:
+        target_op = ops_by_name.get(fault_op.fault_for)
+        if target_op is None:
+            expanded = [
+                op for name, op in ops_by_name.items()
+                if name.startswith(fault_op.fault_for + '[')
+            ]
+            if not expanded:
+                continue
+            target_op = expanded[0]
+
+        eff_requires = list(target_op.requires) + [
+            r for r in fault_op.requires if r not in target_op.requires
+        ]
+        eff_excludes = list(target_op.excludes) + [
+            e for e in fault_op.excludes if e not in target_op.excludes
+        ]
+
+        match_op = Operation(
+            name=f"__fault_match_{fault_op.name}",
+            type="check",
+            requires=eff_requires,
+            excludes=eff_excludes,
+        )
+
+        target_nodes = _find_target_nodes(
+            graph, match_op,
+            param_choices=all_pc or None,
+        )
+
+        case_count = 0
+        seen_case_keys: set[tuple] = set()
+
+        for target_node in target_nodes:
+            if case_count >= definition.suite.max_cases:
+                break
+
+            try:
+                shortest_len = nx.shortest_path_length(
+                    graph, initial, target_node
+                )
+                max_depth = shortest_len + 2
+                raw_paths = nx.all_simple_paths(
+                    graph, initial, target_node, cutoff=max_depth,
+                )
+            except (nx.NodeNotFound, nx.NetworkXNoPath):
+                continue
+
+            seen_paths: set[tuple] = set()
+            for path in raw_paths:
+                path_key = tuple(id(n) for n in path)
+                if path_key in seen_paths:
+                    continue
+                seen_paths.add(path_key)
+                if case_count >= definition.suite.max_cases:
+                    break
+
+                edge_choices = []
+                for i in range(len(path) - 1):
+                    edge_choices.append(
+                        _edges_between(graph, path[i], path[i + 1])
+                    )
+
+                for combo in product(*edge_choices):
+                    if case_count >= definition.suite.max_cases:
+                        break
+
+                    all_steps = list(combo) + [fault_op.name]
+
+                    case_params = base_params
+                    if has_any_choices:
+                        case_params = _extract_params_from_steps(
+                            all_steps, ops_by_name,
+                            all_pc, base_params,
+                        )
+
+                    visible_steps = [
+                        s for s in all_steps
+                        if not s.startswith('__set_param_')
+                    ]
+
+                    cleanup_steps = []
+                    if definition.suite.cleanup:
+                        cleanup_steps = _find_cleanup_path(
+                            graph, target_node, all_ops,
+                            has_exclusive_choices,
+                        )
+
+                    case_id = f"fault-{fault_op.name}-{case_count + 1}"
+                    if has_any_choices:
+                        diff = {
+                            k: v for k, v in case_params.items()
+                            if k not in base_params or base_params[k] != v
+                        }
+                        if diff:
+                            tag = "_".join(
+                                f"{k}={v}" for k, v in sorted(diff.items())
+                            )
+                            case_id = f"fault-{fault_op.name}-{case_count + 1}-{tag}"
+
+                    step_descriptions = []
+                    for s in visible_steps:
+                        op = ops_by_name.get(s)
+                        if op and op.description:
+                            step_descriptions.append(f"{s}: {op.description}")
+                        else:
+                            step_descriptions.append(s)
+
+                    case_key = (
+                        tuple(visible_steps),
+                        tuple(sorted(case_params.items())),
+                        tuple(cleanup_steps),
+                    )
+                    if case_key in seen_case_keys:
+                        continue
+                    seen_case_keys.add(case_key)
+
+                    fault_cases.append(TestCase(
+                        case_id=case_id,
+                        steps=visible_steps,
+                        target=fault_op.name,
+                        cleanup_steps=cleanup_steps,
+                        description=" -> ".join(step_descriptions),
+                        params=case_params,
+                        is_fault=True,
+                    ))
+                    case_count += 1
+
+    return fault_cases
+
+
 def _normalize_step(step: str) -> str:
     """Replace instance-parameter values with wildcards for shape comparison."""
     return re.sub(r'=([^\],]+)', '=*', step)
@@ -587,7 +745,18 @@ def generate_cases(
     cases = _generate_cases_single(
         definition, graph, definition.suite.params, all_ops,
     )
-    return _apply_strategy(cases, definition.suite.generation_strategy)
+    cases = _apply_strategy(cases, definition.suite.generation_strategy)
+
+    if definition.suite.faults:
+        fault_cases = _generate_fault_cases(
+            definition, graph, definition.suite.params, all_ops,
+        )
+        fault_cases = _apply_strategy(
+            fault_cases, definition.suite.generation_strategy,
+        )
+        cases.extend(fault_cases)
+
+    return cases
 
 
 def _generate_cases_with_matrix(
@@ -635,6 +804,15 @@ def _generate_cases_with_matrix(
             case.params = case_params
 
         all_cases.extend(combo_cases)
+
+        if definition.suite.faults:
+            fault_combo = _generate_fault_cases(
+                filtered_defn, graph, case_params, filtered_ops,
+            )
+            for case in fault_combo:
+                case.case_id = f"{case.case_id}[{param_tag}]"
+                case.params = case_params
+            all_cases.extend(fault_combo)
 
     return _apply_strategy(all_cases, definition.suite.generation_strategy)
 
@@ -737,5 +915,35 @@ def explain_graph(
             "total_combinations": len(combos),
             "constraints": len(definition.suite.param_matrix.constraints),
         }
+
+    fault_summary = []
+    for op in definition.operations:
+        if op.type != 'fault':
+            continue
+        target_op = ops_by_name.get(op.fault_for)
+        if target_op is None:
+            continue
+        eff_requires = list(set(target_op.requires + op.requires))
+        eff_excludes = list(set(target_op.excludes + op.excludes))
+        match_op = Operation(
+            name=f"__fault_match_{op.name}",
+            type="check",
+            requires=eff_requires,
+            excludes=eff_excludes,
+        )
+        matching_nodes = _find_target_nodes(
+            graph, match_op,
+            param_choices=definition.suite.param_choices or None,
+        )
+        fault_summary.append({
+            "name": op.name,
+            "fault_for": op.fault_for,
+            "extra_requires": op.requires,
+            "extra_excludes": op.excludes,
+            "triggerable_from_n_states": len(matching_nodes),
+            "terminal": op.terminal,
+        })
+    if fault_summary:
+        result["fault_operations"] = fault_summary
 
     return result

@@ -1,0 +1,17 @@
+modules:
+  - fault_demo.py
+
+suite:
+  name: "Fault Injection Demo"
+  description: >
+    Demonstrates fault-injection testing.  Two fault scenarios model
+    what happens when start_vm is attempted with hugepages or TPM
+    configured but the host lacks support.  The framework generates
+    both normal (happy-path) cases and fault (error-path) cases.
+  targets:
+    - check_vm_running
+  params:
+    guest_name: testvm
+  max_cases: 20
+  faults: true
+  cleanup: true

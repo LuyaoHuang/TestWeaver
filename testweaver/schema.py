@@ -75,7 +75,7 @@ class Operation(BaseModel):
 
     name: str
     description: str = ""
-    type: Literal["action", "check", "setup", "cleanup"] = "action"
+    type: Literal["action", "check", "setup", "cleanup", "fault"] = "action"
     provides: list[str] = Field(default_factory=list)
     requires: list[str] = Field(default_factory=list)
     clears: list[str] = Field(default_factory=list)
@@ -89,7 +89,30 @@ class Operation(BaseModel):
     callable: Callable | None = Field(default=None, exclude=True)
     verify_callable: Callable | None = Field(default=None, exclude=True)
     param_provider: str | None = Field(default=None, exclude=True)
+    fault_for: str | None = Field(default=None)
+    terminal: bool = True
     instance_params: dict[str, Any] = Field(default_factory=dict, exclude=True)
+
+    @model_validator(mode="after")
+    def check_fault_constraints(self) -> Operation:
+        """Ensure fault operations have no state-write fields and specify fault_for."""
+        if self.type == "fault":
+            if not self.fault_for:
+                raise ValueError(
+                    f"Fault operation '{self.name}' must specify 'fault_for'"
+                )
+            for field in ("provides", "clears", "cuts"):
+                if getattr(self, field):
+                    raise ValueError(
+                        f"Fault operation '{self.name}' must not declare "
+                        f"'{field}' (faults don't change state)"
+                    )
+            if self.grafts:
+                raise ValueError(
+                    f"Fault operation '{self.name}' must not declare "
+                    f"'grafts' (faults don't change state)"
+                )
+        return self
 
     @model_validator(mode="after")
     def check_cleanup_has_clears(self) -> Operation:
@@ -112,6 +135,7 @@ class TestSuite(BaseModel):
     targets: list[str]
     max_cases: int = 100
     cleanup: bool = True
+    faults: bool = True
     generation_strategy: Literal["exhaustive", "pairwise", "representative"] = "exhaustive"
 
 
@@ -134,6 +158,18 @@ class TestDefinition(BaseModel):
             if target not in op_names:
                 raise ValueError(
                     f"Target '{target}' not found in operations: {op_names}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_fault_targets_exist(self) -> TestDefinition:
+        """Ensure all fault_for references point to existing operations."""
+        op_names = {op.name for op in self.operations}
+        for op in self.operations:
+            if op.fault_for and op.fault_for not in op_names:
+                raise ValueError(
+                    f"Fault operation '{op.name}' references target "
+                    f"'{op.fault_for}' which is not defined"
                 )
         return self
 
@@ -162,6 +198,8 @@ class TestDefinition(BaseModel):
                     all_states.add(tgt + state[len(src):])
 
         for op in self.operations:
+            if op.type == 'fault':
+                continue
             for req in op.requires:
                 if req.startswith('params.'):
                     continue
@@ -238,6 +276,7 @@ class CaseResult(BaseModel):
     duration_ms: float = 0.0
     replanned: bool = False
     replan_reason: str | None = None
+    is_fault: bool = False
 
 
 class RunSummary(BaseModel):
@@ -282,6 +321,7 @@ class TestCase(BaseModel):
     cleanup_steps: list[str] = Field(default_factory=list)
     description: str = ""
     params: dict[str, Any] = Field(default_factory=dict)
+    is_fault: bool = False
 
 
 def _load_definition_from_module(path: Path) -> TestDefinition:

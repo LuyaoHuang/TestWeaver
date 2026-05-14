@@ -153,3 +153,19 @@ def skip_when(**conditions: Any) -> Callable:
         meta.setdefault('skip_when', []).append(conditions)
         return func
     return decorator
+
+
+def fault_for(operation_name: str, *, terminal: bool = True) -> Callable:
+    """Declare this function as a fault scenario for the named operation.
+
+    The decorated function runs instead of the target operation when the
+    fault's extra conditions (requires/excludes) are met.  The framework
+    auto-generates test cases that reach those conditions.
+    """
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        meta['fault_for'] = operation_name
+        meta['type'] = 'fault'
+        meta['terminal'] = terminal
+        return func
+    return decorator
