@@ -19,6 +19,7 @@ from testweaver.decorators import (
     skip_when,
     suite_setup,
     suite_teardown,
+    timeout,
     unless_param,
     verify_for,
     when_param,

@@ -137,7 +137,8 @@ def suggest_debug(
         likely_cause = "Command timeout"
         message = (
             f"Operation '{failed_op.name}' timed out. "
-            f"Check if the command hangs or needs longer timeout."
+            f"Consider increasing the timeout with @timeout(seconds) decorator "
+            f"or the 'timeout' field in YAML."
         )
     elif failure.stderr:
         likely_cause = "Command execution error"

@@ -173,6 +173,7 @@ An operation is a single test step with dependency declarations:
 | `@suite_teardown` | Run once after all test cases (lifecycle hook) |
 | `@case_setup` | Run before each test case (lifecycle hook) |
 | `@case_teardown` | Run after each test case (lifecycle hook) |
+| `@timeout(seconds)` | Set per-operation timeout, overriding the global `--timeout` |
 
 ### Hierarchical State
 
@@ -658,6 +659,55 @@ CLI flags override YAML values. When a limit is hit during graph building, a war
 - **`max_state_depth`** — set this when states accumulate many entries (e.g., multiple devices each with several sub-states). A value of 0 means no limit.
 
 See [docs/examples.md](docs/examples.md#scalability-controls) for more examples.
+
+## Per-Step Timeout
+
+By default, every operation uses the global `--timeout` value (300s). You can override this per-operation when different steps have very different expected durations — e.g., a VM boot may need 600s while a `virsh` command should complete in 30s.
+
+### Python Decorator
+
+```python
+from testweaver import action, provides, timeout
+
+@action
+@provides('vm.active')
+@timeout(600)
+def boot_vm(params):
+    """Boot a VM — may take up to 10 minutes."""
+    subprocess.run(['virsh', 'start', params['vm_name']], check=True)
+
+@action
+@provides('vm.config')
+@timeout(30)
+def define_vm(params):
+    """Define a VM — should be fast."""
+    subprocess.run(['virsh', 'define', params['xml_path']], check=True)
+```
+
+### YAML
+
+```yaml
+operations:
+  - name: boot_vm
+    type: action
+    provides: [vm.active]
+    requires: [vm.config]
+    timeout: 600
+    run: virsh start $vm_name
+
+  - name: check_vm
+    type: check
+    requires: [vm.active]
+    timeout: 30
+    run: virsh domstate $vm_name | grep running
+```
+
+### Behavior
+
+- Operations without `timeout` use the global `--timeout` CLI value (default 300s).
+- Per-step timeout applies to both shell commands and Python callables.
+- Callable timeout enforcement uses `signal.SIGALRM` (Linux) and is only available in the main thread. When using `--workers` > 1, callable timeout is not enforced in worker threads; shell commands always have subprocess-level timeout protection regardless.
+- Dry-run mode (`--dry-run`) shows `[timeout=Xs]` for operations with per-step timeouts.
 
 ## Retry / Flaky Test Handling
 

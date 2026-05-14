@@ -79,17 +79,18 @@ def _format_step_line(
 ) -> str:
     """Format a single step line for dry-run output."""
     prefix = f"  {index}. {op_name}"
+    timeout_suffix = f" [timeout={operation.timeout}s]" if operation and operation.timeout else ""
     if operation is None:
         return f"{prefix:<40s} [unknown operation]"
     if operation.callable is not None:
         qual = getattr(operation.callable, "__qualname__",
                        getattr(operation.callable, "__name__", "callable"))
-        return f"{prefix:<40s} [callable: {qual}]"
+        return f"{prefix:<40s} [callable: {qual}]{timeout_suffix}"
     if operation.run:
         resolved = _substitute_params(operation.run, params)
         if resolved != operation.run:
-            return f"{prefix:<40s} run: {operation.run}  ->  {resolved}"
-        return f"{prefix:<40s} run: {operation.run}"
+            return f"{prefix:<40s} run: {operation.run}  ->  {resolved}{timeout_suffix}"
+        return f"{prefix:<40s} run: {operation.run}{timeout_suffix}"
     return f"{prefix:<40s} [no-op]"
 
 

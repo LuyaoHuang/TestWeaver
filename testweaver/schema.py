@@ -89,6 +89,7 @@ class Operation(BaseModel):
     skip_when: list[dict[str, Any]] = Field(default_factory=list)
     run: str = ""
     verify: str = ""
+    timeout: int | None = None
     callable: Callable | None = Field(default=None, exclude=True)
     verify_callable: Callable | None = Field(default=None, exclude=True)
     param_provider: str | None = Field(default=None, exclude=True)

@@ -84,6 +84,15 @@ def cut(*paths: str) -> Callable:
     return decorator
 
 
+def timeout(seconds: int) -> Callable:
+    """Set a per-operation timeout in seconds, overriding the global default."""
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        meta['timeout'] = seconds
+        return func
+    return decorator
+
+
 def _type_decorator(op_type: str) -> Callable:
     """Create a decorator that sets the operation type."""
     def decorator(func: Callable) -> Callable:

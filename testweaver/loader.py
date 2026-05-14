@@ -74,6 +74,7 @@ def extract_operations(module: Any) -> list[tuple[Operation, Callable | None]]:
             skip_when=meta.get('skip_when', []),
             fault_for=meta.get('fault_for'),
             terminal=meta.get('terminal', True),
+            timeout=meta.get('timeout'),
         )
         logger.debug("Extracted operation: %s (type=%s)", name, op.type)
         results.append((op, obj))

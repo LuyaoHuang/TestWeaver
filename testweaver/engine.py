@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -58,16 +60,36 @@ def _run_command(command: str, timeout: int = 300) -> tuple[int, str, str]:
 def _run_callable(
     func: Callable[..., Any],
     params: dict[str, Any],
+    timeout: int = 300,
 ) -> tuple[bool, str, str, Any]:
     """Call a Python callable with params and capture success, output, and return value."""
-    logger.debug("Calling %s", getattr(func, "__qualname__", func))
+    logger.debug("Calling %s (timeout=%ds)", getattr(func, "__qualname__", func), timeout)
+
+    use_alarm = threading.current_thread() is threading.main_thread()
+
+    def _timeout_handler(signum, frame):
+        raise TimeoutError(f"Callable timed out after {timeout}s")
+
+    if use_alarm:
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(timeout)
     try:
         ret = func(params)
+        if use_alarm:
+            signal.alarm(0)
         logger.debug("Callable succeeded")
         return True, "", "", ret
+    except TimeoutError as e:
+        logger.warning("Callable timed out after %ds", timeout)
+        return False, "", str(e), None
     except Exception as e:
+        if use_alarm:
+            signal.alarm(0)
         logger.debug("Callable raised %s: %s", type(e).__name__, e)
         return False, "", str(e), None
+    finally:
+        if use_alarm:
+            signal.signal(signal.SIGALRM, old_handler)
 
 
 def _extract_modifier(value: Any) -> GraphModifier | None:
@@ -157,7 +179,7 @@ def run_step(
 
     if operation.callable is not None:
         start = time.monotonic()
-        ok, stdout, stderr, ret = _run_callable(operation.callable, params)
+        ok, stdout, stderr, ret = _run_callable(operation.callable, params, timeout)
         duration = (time.monotonic() - start) * 1000
         modifier = _extract_modifier(ret) if ok else None
         result = StepResult(
@@ -268,22 +290,20 @@ def _run_verify(
     """Run the operation's verify callback or command, if defined."""
     if operation.verify_callable is not None:
         start = time.monotonic()
-        try:
-            operation.verify_callable(params)
-            duration = (time.monotonic() - start) * 1000
+        ok, _, stderr, _ = _run_callable(operation.verify_callable, params, timeout)
+        duration = (time.monotonic() - start) * 1000
+        if ok:
             return ObserverResult(
                 observer_name=f"verify_{operation.name}",
                 status="pass",
                 duration_ms=round(duration, 2),
             )
-        except Exception as e:
-            duration = (time.monotonic() - start) * 1000
-            return ObserverResult(
-                observer_name=f"verify_{operation.name}",
-                status="fail",
-                error=str(e),
-                duration_ms=round(duration, 2),
-            )
+        return ObserverResult(
+            observer_name=f"verify_{operation.name}",
+            status="fail",
+            error=stderr,
+            duration_ms=round(duration, 2),
+        )
     if operation.verify:
         command = _substitute_params(operation.verify, params)
         if not command.strip():
@@ -474,12 +494,13 @@ def run_case(
             step_params = dict(params)
             if instance_params:
                 step_params.update(instance_params)
-            result, modifier = run_step(op, step_params, timeout)
+            step_timeout = op.timeout if op.timeout is not None else timeout
+            result, modifier = run_step(op, step_params, step_timeout)
             step_results.append(result)
 
             # Run verify if step passed
             if result.status == "pass":
-                verify_result = _run_verify(op, step_params, timeout)
+                verify_result = _run_verify(op, step_params, step_timeout)
                 if verify_result is not None:
                     result.verify_result = verify_result
                     if verify_result.status != "pass":
@@ -531,7 +552,8 @@ def run_case(
                         cleanup_op = _render_state_paths(cleanup_op, inst_params)
                         cleanup_params.update(inst_params)
                 if cleanup_op:
-                    cleanup_result, _ = run_step(cleanup_op, cleanup_params, timeout)
+                    cleanup_timeout = cleanup_op.timeout if cleanup_op.timeout is not None else timeout
+                    cleanup_result, _ = run_step(cleanup_op, cleanup_params, cleanup_timeout)
                     step_results.append(cleanup_result)
     finally:
         if definition.hooks.case_teardown:
