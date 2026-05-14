@@ -18,6 +18,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Graph visualization** — export dependency graphs as DOT (Graphviz) or Mermaid for visual exploration
 - **Parallel test execution** — run independent test cases concurrently with `--workers`
 - **Test case filtering** — select cases by ID pattern, target, step, or fault status with `-k`, `--target`, `--has-step`, `--fault-only`, `--no-fault`
+- **Dry-run mode** — preview test cases without executing them with `--dry-run`; shows resolved commands, callables, and cleanup steps
 - **Retry / flaky test handling** — automatic retries for failed cases with `--retries` and `--retry-delay`; flaky detection when a case fails then passes on retry
 - **Lifecycle hooks** — `@suite_setup` / `@suite_teardown` run once before/after all cases; `@case_setup` / `@case_teardown` run before/after each case; teardown hooks always fire, even on failure
 - **Logging infrastructure** — structured logging with `--verbose`, `--debug`, and `--log-file` flags; thread-aware output for parallel execution
@@ -123,6 +124,7 @@ testweaver run my_test.yaml --format junit -o results.xml  # JUnit XML for CI
 testweaver run my_test.yaml --format html -o report.html   # HTML report
 testweaver run my_test.yaml -w 4     # Run tests with 4 parallel workers
 testweaver run my_test.yaml --retries 3  # Retry failed cases up to 3 times
+testweaver run my_test.yaml --dry-run     # Preview what would run without executing
 testweaver run my_test.yaml -k "check-*"  # Run only cases matching a pattern
 testweaver run my_test.yaml -v       # Show execution logs on stderr
 testweaver run my_test.yaml --debug --log-file run.log  # Debug logs to file
@@ -513,6 +515,7 @@ testweaver generate <file> [--format json|text] [-p key=value] [-v]  # Generate 
 testweaver run <file> [-o file] [--timeout 300] [-w 4] [-p key=value]  # Run tests
                [--retries N] [--retry-delay S]       # Retry failed cases
                [--format json|text|junit|tap|html]
+               [--dry-run]                           # Preview without executing
                [-v] [--debug] [--log-file path]     # Logging options
 testweaver analyze <results.json> [-d file]         # Analyze results
 testweaver graph <file> [--format json|text|dot|mermaid] [-o file] [-v]  # Show/export graph
@@ -577,6 +580,45 @@ cases = generate_cases(definition, graph)
 cases = filter_cases(cases, ids=["check-*"], no_fault=True)
 results, suite_hooks = run_all(cases, definition, graph=graph, workers=4)
 ```
+
+## Dry-Run Mode
+
+Preview what test cases would be executed without actually running anything. Useful for verifying case generation, checking parameter substitution, and reviewing execution plans before committing to a long-running test suite.
+
+```bash
+testweaver run my_test.yaml --dry-run
+testweaver run my_test.yaml --dry-run -p host=10.0.0.1   # With param overrides
+testweaver run my_test.yaml --dry-run -k "check-*"       # With filters
+testweaver run my_test.yaml --dry-run -o preview.txt     # Save to file
+```
+
+The output shows each case with its target, parameters, steps (with resolved shell commands), and cleanup steps:
+
+```
+Dry-run: 2 test case(s) would be executed
+
+--- check-1 ---
+Target: check_vm
+Params: {'host': '192.168.1.1', 'vm_name': 'testvm'}
+Steps:
+  1. setup_host                          run: ssh $host echo ready  ->  ssh 192.168.1.1 echo ready
+  2. start_vm                            run: virsh start $vm_name  ->  virsh start testvm
+  3. check_vm                            run: virsh domstate $vm_name  ->  virsh domstate testvm
+Cleanup:
+  1. stop_vm                             run: virsh destroy $vm_name  ->  virsh destroy testvm
+  2. teardown_host                       run: ssh $host shutdown  ->  ssh 192.168.1.1 shutdown
+
+--- fault-bad_start-1 [FAULT] ---
+...
+```
+
+For Python callable operations, the output shows the function's qualified name instead of a shell command:
+
+```
+  2. start_vm                            [callable: my_ops.start_vm]
+```
+
+All filtering options (`-k`, `--target`, `--has-step`, `--fault-only`, `--no-fault`) work with `--dry-run`. The `--format` flag is ignored since there are no execution results to format.
 
 ## Retry / Flaky Test Handling
 

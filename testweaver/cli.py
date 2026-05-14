@@ -4,16 +4,24 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 
 from . import __version__
 from .analyzer import find_failures, suggest_debug, summarize_run
-from .engine import run_all
+from .engine import _substitute_params, run_all
 from .filtering import filter_cases
 from .graph import build_graph, explain_graph, export_graph, generate_cases
 from .reporters import to_html, to_junit_xml, to_tap
-from .schema import CaseResult, TestDefinition, export_json_schema, load_definition
+from .schema import (
+    CaseResult,
+    Operation,
+    TestCase,
+    TestDefinition,
+    export_json_schema,
+    load_definition,
+)
 
 
 def _configure_logging(
@@ -61,6 +69,62 @@ def _parse_param_overrides(params: tuple[str, ...]) -> dict[str, str]:
         key, val = p.split('=', 1)
         result[key.strip()] = val.strip()
     return result
+
+
+def _format_step_line(
+    index: int,
+    op_name: str,
+    operation: Operation | None,
+    params: dict[str, Any],
+) -> str:
+    """Format a single step line for dry-run output."""
+    prefix = f"  {index}. {op_name}"
+    if operation is None:
+        return f"{prefix:<40s} [unknown operation]"
+    if operation.callable is not None:
+        qual = getattr(operation.callable, "__qualname__",
+                       getattr(operation.callable, "__name__", "callable"))
+        return f"{prefix:<40s} [callable: {qual}]"
+    if operation.run:
+        resolved = _substitute_params(operation.run, params)
+        if resolved != operation.run:
+            return f"{prefix:<40s} run: {operation.run}  ->  {resolved}"
+        return f"{prefix:<40s} run: {operation.run}"
+    return f"{prefix:<40s} [no-op]"
+
+
+def _print_dry_run(
+    cases: list[TestCase],
+    definition: TestDefinition,
+    output_path: str | None,
+) -> None:
+    """Print a preview of test cases without executing them."""
+    ops_by_name = {op.name: op for op in definition.operations}
+    lines: list[str] = []
+    lines.append(f"Dry-run: {len(cases)} test case(s) would be executed")
+
+    for case in cases:
+        fault_tag = " [FAULT]" if case.is_fault else ""
+        lines.append(f"\n--- {case.case_id}{fault_tag} ---")
+        lines.append(f"Target: {case.target}")
+        params = case.params if case.params else dict(definition.suite.params)
+        if params:
+            lines.append(f"Params: {params}")
+        lines.append("Steps:")
+        for i, step_name in enumerate(case.steps, 1):
+            op = ops_by_name.get(step_name)
+            lines.append(_format_step_line(i, step_name, op, params))
+        if case.cleanup_steps:
+            lines.append("Cleanup:")
+            for i, step_name in enumerate(case.cleanup_steps, 1):
+                op = ops_by_name.get(step_name)
+                lines.append(_format_step_line(i, step_name, op, params))
+
+    rendered = "\n".join(lines)
+    click.echo(rendered)
+    if output_path:
+        Path(output_path).write_text(rendered)
+        click.echo(f"Dry-run preview saved to {output_path}", err=True)
 
 
 @click.group()
@@ -172,11 +236,13 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
               help="Show DEBUG-level execution logs on stderr")
 @click.option("--log-file", type=click.Path(), default=None,
               help="Also write logs to this file")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Preview test cases without executing them")
 def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...],
         workers: int, retries: int, retry_delay: float,
         filters: tuple[str, ...], filter_targets: tuple[str, ...],
         filter_steps: tuple[str, ...], fault_only: bool, no_fault: bool,
-        verbose: bool, debug: bool, log_file: str | None) -> None:
+        verbose: bool, debug: bool, log_file: str | None, dry_run: bool) -> None:
     """Run test cases from a definition file."""
     _configure_logging(verbose=verbose, debug=debug, log_file=log_file, workers=workers)
     definition = load_definition(path)
@@ -196,6 +262,10 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
         fault_only=fault_only,
         no_fault=no_fault,
     )
+
+    if dry_run:
+        _print_dry_run(cases, definition, output)
+        return
 
     worker_info = f" with {workers} worker(s)" if workers != 1 else ""
     retry_info = f", {retries} retries" if retries > 0 else ""
