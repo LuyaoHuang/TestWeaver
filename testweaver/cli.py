@@ -11,6 +11,7 @@ from .analyzer import find_failures, suggest_debug, summarize_run
 from .engine import run_all
 from .filtering import filter_cases
 from .graph import build_graph, explain_graph, export_graph, generate_cases
+from .reporters import to_html, to_junit_xml, to_tap
 from .schema import CaseResult, TestDefinition, export_json_schema, load_definition
 
 
@@ -105,7 +106,8 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--output", "-o", type=click.Path(), help="Save results to file")
 @click.option("--timeout", default=300, help="Per-step timeout in seconds")
-@click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
+@click.option("--format", "fmt",
+              type=click.Choice(["json", "text", "junit", "tap", "html"]), default="json")
 @click.option("--param", "-p", multiple=True, help="Override parameter: key=value")
 @click.option("--workers", "-w", default=1, help="Parallel workers (0=auto, 1=sequential)")
 @click.option("--filter", "-k", "filters", multiple=True,
@@ -150,11 +152,14 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
             "summary": json.loads(summary.model_dump_json()),
             "results": [json.loads(r.model_dump_json()) for r in results],
         }
-        result_json = json.dumps(data, indent=2)
-        click.echo(result_json)
-        if output:
-            Path(output).write_text(result_json)
-            click.echo(f"Results saved to {output}", err=True)
+        rendered = json.dumps(data, indent=2)
+    elif fmt == "junit":
+        rendered = to_junit_xml(results, summary,
+                                suite_name=definition.suite.name)
+    elif fmt == "tap":
+        rendered = to_tap(results, summary)
+    elif fmt == "html":
+        rendered = to_html(results, summary)
     else:
         click.echo(f"\nTotal: {summary.total}  Passed: {summary.passed}  "
                     f"Failed: {summary.failed}  Errors: {summary.errors}")
@@ -166,6 +171,13 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
             status_icon = "PASS" if r.status == "pass" else "FAIL"
             fault_tag = " [FAULT]" if r.is_fault else ""
             click.echo(f"  [{status_icon}] {r.case_id}{fault_tag} ({r.duration_ms:.0f}ms)")
+        rendered = None
+
+    if rendered is not None:
+        click.echo(rendered)
+        if output:
+            Path(output).write_text(rendered)
+            click.echo(f"Results saved to {output}", err=True)
 
 
 @main.command()

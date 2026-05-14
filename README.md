@@ -13,6 +13,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Parameter support** — two approaches for parameterized testing: parameter graph and parameter matrix
 - **Multi-instance namespaces** — model multiple devices of the same type (`TPM:tpm0`, `TPM:tpm1`) with independent states in a single graph, wildcard queries (`TPM:tpm*.ready`), and generation strategies to control state-space explosion
 - **Graph modifiers** — runtime modifiers (`EdgeGuard`, `TransientHook`, `TransitionObserver`) let operations influence future execution when the graph can't be fully static
+- **Structured reporting** — output results as JSON, JUnit XML (CI integration), TAP (streaming), or HTML (visual reports)
 - **Structured JSON output** — every command outputs machine-readable JSON
 - **Graph visualization** — export dependency graphs as DOT (Graphviz) or Mermaid for visual exploration
 - **Parallel test execution** — run independent test cases concurrently with `--workers`
@@ -114,7 +115,9 @@ suite:
 ```bash
 testweaver validate my_test.yaml     # Check for errors
 testweaver generate my_test.yaml     # Generate test cases
-testweaver run my_test.yaml          # Run tests
+testweaver run my_test.yaml          # Run tests (JSON output)
+testweaver run my_test.yaml --format junit -o results.xml  # JUnit XML for CI
+testweaver run my_test.yaml --format html -o report.html   # HTML report
 testweaver run my_test.yaml -w 4     # Run tests with 4 parallel workers
 testweaver run my_test.yaml -k "check-*"  # Run only cases matching a pattern
 testweaver graph my_test.yaml        # Show dependency graph
@@ -413,7 +416,8 @@ See [docs/examples.md](docs/examples.md#multi-instance-namespaces) for full exam
 ```bash
 testweaver validate <file>                          # Validate definition
 testweaver generate <file> [--format json|text] [-p key=value]  # Generate cases
-testweaver run <file> [-o results.json] [--timeout 300] [-w 4] [-p key=value]  # Run tests
+testweaver run <file> [-o file] [--timeout 300] [-w 4] [-p key=value]  # Run tests
+                     [--format json|text|junit|tap|html]
 testweaver analyze <results.json> [-d file]         # Analyze results
 testweaver graph <file> [--format json|text|dot|mermaid] [-o file]  # Show/export dependency graph
 testweaver matrix <file> [--format json|text]       # Preview parameter combos
@@ -477,6 +481,45 @@ cases = generate_cases(definition, graph)
 cases = filter_cases(cases, ids=["check-*"], no_fault=True)
 results = run_all(cases, definition, graph=graph, workers=4)
 ```
+
+## Structured Reporting
+
+The `run` command supports multiple output formats via `--format`:
+
+| Format | Flag | Use Case |
+|--------|------|----------|
+| `json` | `--format json` | (Default) Machine-readable structured output |
+| `text` | `--format text` | Human-readable summary |
+| `junit` | `--format junit` | JUnit XML for CI integration (Jenkins, GitHub Actions, GitLab CI) |
+| `tap` | `--format tap` | TAP version 13 streaming output |
+| `html` | `--format html` | Self-contained HTML report with visual styling |
+
+```bash
+# JUnit XML for CI pipelines
+testweaver run my_test.yaml --format junit -o results.xml
+
+# TAP output for streaming consumers
+testweaver run my_test.yaml --format tap
+
+# HTML report for visual review
+testweaver run my_test.yaml --format html -o report.html
+```
+
+All formats include fault-injection case tagging and can be combined with `--output` / `-o` to save to a file.
+
+### Programmatic API
+
+```python
+from testweaver.reporters import to_junit_xml, to_tap, to_html
+from testweaver.analyzer import summarize_run
+
+summary = summarize_run(results)
+junit_xml = to_junit_xml(results, summary, suite_name="My Suite")
+tap_output = to_tap(results, summary)
+html_report = to_html(results, summary)
+```
+
+See [docs/examples.md](docs/examples.md#structured-reporting) for format details and CI configuration examples.
 
 ## For AI Agents
 
