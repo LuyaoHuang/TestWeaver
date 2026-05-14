@@ -23,6 +23,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Retry / flaky test handling** — automatic retries for failed cases with `--retries` and `--retry-delay`; flaky detection when a case fails then passes on retry
 - **Lifecycle hooks** — `@suite_setup` / `@suite_teardown` run once before/after all cases; `@case_setup` / `@case_teardown` run before/after each case; teardown hooks always fire, even on failure
 - **Case prioritization** — sort generated cases by strategy (`shortest`, `longest`, `target`, `total`, `fault-first`, `fault-last`, `random`) with `--sort`; assign operation priorities with `@priority(level)`
+- **Progress reporting** — real-time progress bar during test execution with `--progress`; auto-detects TTY; shows pass/fail status per case
 - **Logging infrastructure** — structured logging with `--verbose`, `--debug`, and `--log-file` flags; thread-aware output for parallel execution
 - **Built-in analysis** — failure detection, debug suggestions, and performance summaries
 
@@ -130,6 +131,7 @@ testweaver run my_test.yaml --dry-run     # Preview what would run without execu
 testweaver run my_test.yaml -k "check-*"  # Run only cases matching a pattern
 testweaver run my_test.yaml --sort shortest    # Run shortest cases first
 testweaver generate my_test.yaml --sort target # Sort by operation priority
+testweaver run my_test.yaml --progress     # Force progress bar on
 testweaver run my_test.yaml -v       # Show execution logs on stderr
 testweaver run my_test.yaml --debug --log-file run.log  # Debug logs to file
 testweaver graph my_test.yaml        # Show dependency graph
@@ -525,6 +527,7 @@ testweaver run <file> [-o file] [--timeout 300] [-w 4] [-p key=value]  # Run tes
                [--retries N] [--retry-delay S]       # Retry failed cases
                [--format json|text|junit|tap|html]
                [--dry-run]                           # Preview without executing
+               [--progress | --no-progress]              # Progress bar (default: auto-detect TTY)
                [--max-graph-nodes N] [--max-path-depth N] [--max-state-depth N]
                [-v] [--debug] [--log-file path]     # Logging options
 testweaver analyze <results.json> [-d file]         # Analyze results
@@ -912,6 +915,46 @@ logging.getLogger("testweaver").addHandler(logging.StreamHandler())
 # Now engine, graph, schema, and loader all emit logs
 results, suite_hooks = run_all(cases, definition)
 ```
+
+## Progress Reporting
+
+By default, TestWeaver auto-detects whether stderr is a TTY and shows a live progress bar during `testweaver run`. The progress bar displays overall completion, elapsed time, ETA, and the pass/fail status of each completed case.
+
+```bash
+testweaver run my_test.yaml                    # Auto-detect TTY
+testweaver run my_test.yaml --progress         # Force progress bar on
+testweaver run my_test.yaml --no-progress      # Force progress bar off
+```
+
+Example output:
+
+```
+Running 5 case(s)  [################----]  3/5  [PASS] check-3
+```
+
+### Behavior
+
+- **Auto-detect** (default) — progress bar appears when stderr is a TTY; suppressed when piped
+- **`--verbose` / `--debug`** — progress bar is auto-disabled to avoid interleaved output; logging provides superset information
+- **`--format json/junit/tap/html`** — progress bar on stderr does not interfere with structured output on stdout
+- **Parallel execution** — progress bar updates are thread-safe; cases appear as they complete (may be out-of-order)
+- **Empty case list** — no progress bar shown
+
+### Programmatic API
+
+The `run_all()` function accepts an optional `on_progress` callback that fires after each case completes:
+
+```python
+from testweaver.engine import run_all
+from testweaver.schema import ProgressEvent
+
+def my_callback(event: ProgressEvent):
+    print(f"[{event.index + 1}/{event.total}] {event.case_id}: {event.status}")
+
+results, suite_hooks = run_all(cases, definition, on_progress=my_callback)
+```
+
+The `ProgressEvent` includes `case_id`, `status`, `duration_ms`, `index`, `total`, `is_fault`, `flaky`, and `retry_count`. The callback is invoked from worker threads in parallel mode — ensure your callback is thread-safe.
 
 ## Structured Reporting
 

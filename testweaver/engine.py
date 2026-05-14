@@ -6,7 +6,7 @@ import signal
 import subprocess
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 from string import Template
 from typing import Any, Callable
@@ -24,6 +24,7 @@ from .schema import (
     HookResult,
     ObserverResult,
     Operation,
+    ProgressEvent,
     StepResult,
     TestCase,
     TestDefinition,
@@ -668,6 +669,7 @@ def run_all(
     workers: int = 1,
     retries: int = 0,
     retry_delay: float = 0.0,
+    on_progress: Callable[[ProgressEvent], None] | None = None,
 ) -> tuple[list[CaseResult], list[HookResult]]:
     """Run test cases and return their results.
 
@@ -681,6 +683,7 @@ def run_all(
             uses that many threads.
         retries: Maximum number of retry attempts for each failed case.
         retry_delay: Seconds to wait between retry attempts.
+        on_progress: Optional callback invoked after each case completes.
 
     Returns:
         Tuple of (case results in same order as *cases*, suite hook results).
@@ -711,11 +714,24 @@ def run_all(
     suite_setup_failed = any(r.status != "pass" for r in suite_hook_results)
     results: list[CaseResult] = []
 
+    def _emit(result: CaseResult, index: int) -> None:
+        if on_progress is not None:
+            on_progress(ProgressEvent(
+                case_id=result.case_id,
+                status=result.status,
+                duration_ms=result.duration_ms,
+                index=index,
+                total=len(cases),
+                is_fault=result.is_fault,
+                flaky=result.flaky,
+                retry_count=result.retry_count,
+            ))
+
     try:
         if suite_setup_failed:
             logger.error("Suite setup failed; skipping all cases")
-            results = [
-                CaseResult(
+            for i, c in enumerate(cases):
+                r = CaseResult(
                     case_id=c.case_id,
                     status="error",
                     hook_results=[HookResult(
@@ -725,23 +741,33 @@ def run_all(
                         error="Skipped due to suite_setup failure",
                     )],
                 )
-                for c in cases
-            ]
+                results.append(r)
+                _emit(r, i)
         elif workers == 1:
-            results = [
-                run_case_with_retries(
+            for i, case in enumerate(cases):
+                result = run_case_with_retries(
                     case, definition, timeout, graph=graph,
                     retries=retries, retry_delay=retry_delay,
                 )
-                for case in cases
-            ]
+                results.append(result)
+                _emit(result, i)
         else:
             runner = partial(
                 run_case_with_retries, definition=definition, timeout=timeout,
                 graph=graph, retries=retries, retry_delay=retry_delay,
             )
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                results = list(pool.map(runner, cases))
+                future_to_index = {
+                    pool.submit(runner, case): i
+                    for i, case in enumerate(cases)
+                }
+                indexed_results: dict[int, CaseResult] = {}
+                for future in as_completed(future_to_index):
+                    i = future_to_index[future]
+                    result = future.result()
+                    indexed_results[i] = result
+                    _emit(result, i)
+                results = [indexed_results[i] for i in range(len(cases))]
     finally:
         if definition.hooks.suite_teardown:
             teardown_results = _run_hooks(

@@ -18,6 +18,7 @@ from .reporters import to_html, to_junit_xml, to_tap
 from .schema import (
     CaseResult,
     Operation,
+    ProgressEvent,
     TestCase,
     TestDefinition,
     export_json_schema,
@@ -236,6 +237,45 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
             click.echo(f"Description: {case.description}")
 
 
+def _run_with_progress(
+    cases: list[TestCase],
+    definition: TestDefinition,
+    timeout: int,
+    graph: Any = None,
+    workers: int = 1,
+    retries: int = 0,
+    retry_delay: float = 0.0,
+) -> tuple[list[CaseResult], list[Any]]:
+    """Run cases with a click progress bar on stderr."""
+    import threading
+
+    lock = threading.Lock()
+
+    def _show_item(item: str | None) -> str:
+        return item if item else ""
+
+    with click.progressbar(
+        length=len(cases),
+        label=f"Running {len(cases)} case(s)",
+        file=sys.stderr,
+        item_show_func=_show_item,
+        width=36,
+    ) as bar:
+        def _callback(event: ProgressEvent) -> None:
+            status_icon = "PASS" if event.status == "pass" else "FAIL"
+            fault_tag = " [FAULT]" if event.is_fault else ""
+            flaky_tag = " [FLAKY]" if event.flaky else ""
+            label = f"[{status_icon}] {event.case_id}{fault_tag}{flaky_tag}"
+            with lock:
+                bar.update(1, current_item=label)
+
+        return run_all(
+            cases, definition, timeout, graph=graph,
+            workers=workers, retries=retries,
+            retry_delay=retry_delay, on_progress=_callback,
+        )
+
+
 @main.command()
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--output", "-o", type=click.Path(), help="Save results to file")
@@ -276,6 +316,8 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
               help="Sort cases by strategy")
 @click.option("--sort-seed", type=int, default=None,
               help="Random seed for --sort=random")
+@click.option("--progress/--no-progress", default=None,
+              help="Show progress bar (default: auto-detect TTY)")
 def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...],
         workers: int, retries: int, retry_delay: float,
         filters: tuple[str, ...], filter_targets: tuple[str, ...],
@@ -283,7 +325,8 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
         verbose: bool, debug: bool, log_file: str | None, dry_run: bool,
         max_graph_nodes: int | None, max_path_depth: int | None,
         max_state_depth: int | None,
-        sort_strategy: str | None, sort_seed: int | None) -> None:
+        sort_strategy: str | None, sort_seed: int | None,
+        progress: bool | None) -> None:
     """Run test cases from a definition file."""
     _configure_logging(verbose=verbose, debug=debug, log_file=log_file, workers=workers)
     definition = load_definition(path)
@@ -323,12 +366,24 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
         _print_dry_run(cases, definition, output)
         return
 
+    show_progress = progress
+    if show_progress is None:
+        show_progress = sys.stderr.isatty()
+    if verbose or debug:
+        show_progress = False
+
     worker_info = f" with {workers} worker(s)" if workers != 1 else ""
     retry_info = f", {retries} retries" if retries > 0 else ""
-    click.echo(f"Running {len(cases)} test case(s){worker_info}{retry_info}...", err=True)
-    results, suite_hooks = run_all(cases, definition, timeout, graph=graph,
-                                   workers=workers, retries=retries,
-                                   retry_delay=retry_delay)
+    if show_progress and cases:
+        results, suite_hooks = _run_with_progress(
+            cases, definition, timeout, graph=graph,
+            workers=workers, retries=retries, retry_delay=retry_delay,
+        )
+    else:
+        click.echo(f"Running {len(cases)} test case(s){worker_info}{retry_info}...", err=True)
+        results, suite_hooks = run_all(cases, definition, timeout, graph=graph,
+                                       workers=workers, retries=retries,
+                                       retry_delay=retry_delay)
     summary = summarize_run(results, suite_hook_results=suite_hooks)
 
     if fmt == "json":

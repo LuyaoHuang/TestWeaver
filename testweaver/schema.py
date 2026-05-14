@@ -337,6 +337,19 @@ class RunSummary(BaseModel):
     suite_hook_results: list[HookResult] = Field(default_factory=list)
 
 
+class ProgressEvent(BaseModel):
+    """Event emitted when a test case completes during a run."""
+
+    case_id: str
+    status: Literal["pass", "fail", "error"]
+    duration_ms: float
+    index: int
+    total: int
+    is_fault: bool = False
+    flaky: bool = False
+    retry_count: int = 0
+
+
 class FailureDetail(BaseModel):
     """Detailed information about a single test failure."""
 
