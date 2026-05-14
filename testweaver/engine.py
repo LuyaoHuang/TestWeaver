@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from string import Template
 from typing import Any, Callable
 
@@ -468,6 +471,28 @@ def run_all(
     definition: TestDefinition,
     timeout: int = 300,
     graph: nx.MultiDiGraph | None = None,
+    workers: int = 1,
 ) -> list[CaseResult]:
-    """Run all test cases sequentially and return their results."""
-    return [run_case(case, definition, timeout, graph=graph) for case in cases]
+    """Run test cases and return their results.
+
+    Args:
+        cases: Test cases to execute.
+        definition: Full test definition for operation lookup.
+        timeout: Per-step timeout in seconds.
+        graph: Pre-built graph for replanning on blocked operations.
+        workers: Number of parallel workers.  ``1`` runs sequentially,
+            ``0`` auto-detects based on CPU count, and any value ``>1``
+            uses that many threads.
+
+    Returns:
+        List of results in the same order as *cases*.
+    """
+    if workers == 0:
+        workers = os.cpu_count() or 1
+
+    if workers == 1:
+        return [run_case(case, definition, timeout, graph=graph) for case in cases]
+
+    runner = partial(run_case, definition=definition, timeout=timeout, graph=graph)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return list(pool.map(runner, cases))

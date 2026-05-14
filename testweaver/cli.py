@@ -85,7 +85,8 @@ def generate(path: str, fmt: str, param: tuple[str, ...]) -> None:
 @click.option("--timeout", default=300, help="Per-step timeout in seconds")
 @click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
 @click.option("--param", "-p", multiple=True, help="Override parameter: key=value")
-def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...]) -> None:
+@click.option("--workers", "-w", default=1, help="Parallel workers (0=auto, 1=sequential)")
+def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...], workers: int) -> None:
     """Run test cases from a definition file."""
     definition = load_definition(path)
     if param:
@@ -97,8 +98,9 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
     graph = build_graph(definition.operations, param_choices=param_choices)
     cases = generate_cases(definition, graph)
 
-    click.echo(f"Running {len(cases)} test case(s)...", err=True)
-    results = run_all(cases, definition, timeout, graph=graph)
+    worker_info = f" with {workers} worker(s)" if workers != 1 else ""
+    click.echo(f"Running {len(cases)} test case(s){worker_info}...", err=True)
+    results = run_all(cases, definition, timeout, graph=graph, workers=workers)
     summary = summarize_run(results)
 
     if fmt == "json":

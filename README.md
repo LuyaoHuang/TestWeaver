@@ -15,6 +15,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Graph modifiers** — runtime modifiers (`EdgeGuard`, `TransientHook`, `TransitionObserver`) let operations influence future execution when the graph can't be fully static
 - **Structured JSON output** — every command outputs machine-readable JSON
 - **Graph visualization** — export dependency graphs as DOT (Graphviz) or Mermaid for visual exploration
+- **Parallel test execution** — run independent test cases concurrently with `--workers`
 - **Built-in analysis** — failure detection, debug suggestions, and performance summaries
 
 ## Installation
@@ -113,6 +114,7 @@ suite:
 testweaver validate my_test.yaml     # Check for errors
 testweaver generate my_test.yaml     # Generate test cases
 testweaver run my_test.yaml          # Run tests
+testweaver run my_test.yaml -w 4     # Run tests with 4 parallel workers
 testweaver graph my_test.yaml        # Show dependency graph
 ```
 
@@ -409,11 +411,43 @@ See [docs/examples.md](docs/examples.md#multi-instance-namespaces) for full exam
 ```bash
 testweaver validate <file>                          # Validate definition
 testweaver generate <file> [--format json|text] [-p key=value]  # Generate cases
-testweaver run <file> [-o results.json] [--timeout 300] [-p key=value]  # Run tests
+testweaver run <file> [-o results.json] [--timeout 300] [-w 4] [-p key=value]  # Run tests
 testweaver analyze <results.json> [-d file]         # Analyze results
 testweaver graph <file> [--format json|text|dot|mermaid] [-o file]  # Show/export dependency graph
 testweaver matrix <file> [--format json|text]       # Preview parameter combos
 testweaver schema [--type definition|results|summary|test_case]  # Export JSON Schema
+```
+
+## Parallel Execution
+
+By default, test cases run sequentially. Use `--workers` / `-w` to run independent cases concurrently:
+
+```bash
+testweaver run my_test.yaml -w 4      # 4 parallel workers
+testweaver run my_test.yaml -w 0      # Auto-detect from CPU count
+```
+
+Each test case runs in its own thread with independent state — no shared mutable data between cases. The underlying shell commands (`subprocess.run`) release the GIL, so threads achieve near-full parallelism for command-based operations.
+
+| Workers | Behavior |
+|---------|----------|
+| `1` | (Default) Sequential execution |
+| `N > 1` | Run up to N cases concurrently |
+| `0` | Auto-detect based on CPU count |
+
+Results are always returned in the same order as the generated cases, regardless of execution order.
+
+**Note:** Use caution with parallel execution when test cases share external resources (VMs, files, network ports). Sequential execution (`-w 1`) is safer when cases may interfere with each other.
+
+### Programmatic API
+
+```python
+from testweaver.engine import run_all
+from testweaver.graph import build_graph, generate_cases
+
+graph = build_graph(definition.operations)
+cases = generate_cases(definition, graph)
+results = run_all(cases, definition, graph=graph, workers=4)
 ```
 
 ## For AI Agents
