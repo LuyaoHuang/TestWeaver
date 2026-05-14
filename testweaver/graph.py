@@ -199,6 +199,8 @@ def _is_initial_ignoring_params(env: Env) -> bool:
 def build_graph(
     operations: list[Operation],
     param_choices: list[ParamChoice] | None = None,
+    max_nodes: int = 500,
+    max_state_depth: int = 0,
 ) -> nx.MultiDiGraph:
     """Build the state-transition graph from operations and param choices.
 
@@ -209,6 +211,9 @@ def build_graph(
         operations: All defined operations.
         param_choices: Optional parameter choices to expand into
             synthetic operations.
+        max_nodes: Maximum number of graph nodes before stopping BFS.
+        max_state_depth: Skip states with more than this many entries
+            (0 = no limit).
 
     Returns:
         A directed multigraph where nodes are Env states and edges
@@ -232,6 +237,7 @@ def build_graph(
     queue = [initial]
     visited = {initial}
 
+    node_limit_hit = False
     while queue:
         current = queue.pop(0)
         for op in operations:
@@ -242,13 +248,21 @@ def build_graph(
             if new_env is None or new_env == current:
                 continue
 
+            if max_state_depth > 0 and len(new_env.to_flat_set()) > max_state_depth:
+                continue
+
             if new_env not in visited:
+                if len(visited) >= max_nodes:
+                    node_limit_hit = True
+                    continue
                 visited.add(new_env)
                 graph.add_node(new_env, label=_state_key(new_env))
                 queue.append(new_env)
 
             graph.add_edge(current, new_env, operation=op.name)
 
+    if node_limit_hit:
+        logger.warning("Graph node limit reached (%d); some states were not explored", max_nodes)
     logger.info("Graph built: %d nodes, %d edges", graph.number_of_nodes(), graph.number_of_edges())
     return graph
 
@@ -362,6 +376,7 @@ def _generate_cases_single(
     graph: nx.MultiDiGraph,
     base_params: dict[str, Any],
     all_ops: list[Operation] | None = None,
+    max_path_depth: int = 20,
 ) -> list[TestCase]:
     """Generate test cases for a single parameter combination."""
     if all_ops is None:
@@ -407,7 +422,7 @@ def _generate_cases_single(
                 shortest_len = nx.shortest_path_length(
                     graph, initial, target_node
                 )
-                max_depth = shortest_len + 2
+                max_depth = min(shortest_len + 2, max_path_depth)
                 raw_paths = nx.all_simple_paths(
                     graph, initial, target_node, cutoff=max_depth,
                 )
@@ -501,6 +516,7 @@ def _generate_fault_cases(
     graph: nx.MultiDiGraph,
     base_params: dict[str, Any],
     all_ops: list[Operation] | None = None,
+    max_path_depth: int = 20,
 ) -> list[TestCase]:
     """Generate test cases for fault operations.
 
@@ -564,7 +580,7 @@ def _generate_fault_cases(
                 shortest_len = nx.shortest_path_length(
                     graph, initial, target_node
                 )
-                max_depth = shortest_len + 2
+                max_depth = min(shortest_len + 2, max_path_depth)
                 raw_paths = nx.all_simple_paths(
                     graph, initial, target_node, cutoff=max_depth,
                 )
@@ -744,16 +760,21 @@ def generate_cases(
         graph = build_graph(
             definition.operations,
             param_choices=param_choices or None,
+            max_nodes=definition.suite.max_graph_nodes,
+            max_state_depth=definition.suite.max_state_depth,
         )
 
+    mpd = definition.suite.max_path_depth
     cases = _generate_cases_single(
         definition, graph, definition.suite.params, all_ops,
+        max_path_depth=mpd,
     )
     cases = _apply_strategy(cases, definition.suite.generation_strategy)
 
     if definition.suite.faults:
         fault_cases = _generate_fault_cases(
             definition, graph, definition.suite.params, all_ops,
+            max_path_depth=mpd,
         )
         fault_cases = _apply_strategy(
             fault_cases, definition.suite.generation_strategy,
@@ -792,15 +813,21 @@ def _generate_cases_with_matrix(
         if not valid_targets:
             continue
 
-        graph = build_graph(filtered_ops)
+        graph = build_graph(
+            filtered_ops,
+            max_nodes=definition.suite.max_graph_nodes,
+            max_state_depth=definition.suite.max_state_depth,
+        )
 
         filtered_defn = TestDefinition(
             operations=filtered_ops,
             suite=definition.suite.model_copy(update={"targets": valid_targets}),
         )
 
+        mpd = definition.suite.max_path_depth
         combo_cases = _generate_cases_single(
             filtered_defn, graph, case_params, filtered_ops,
+            max_path_depth=mpd,
         )
 
         param_tag = "_".join(f"{k}={v}" for k, v in sorted(combo.items()))
@@ -813,6 +840,7 @@ def _generate_cases_with_matrix(
         if definition.suite.faults:
             fault_combo = _generate_fault_cases(
                 filtered_defn, graph, case_params, filtered_ops,
+                max_path_depth=mpd,
             )
             for case in fault_combo:
                 case.case_id = f"{case.case_id}[{param_tag}]"

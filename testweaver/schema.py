@@ -137,6 +137,9 @@ class TestSuite(BaseModel):
     param_matrix: ParamMatrix | None = None
     targets: list[str]
     max_cases: int = 100
+    max_graph_nodes: int = 500
+    max_path_depth: int = 20
+    max_state_depth: int = 0
     cleanup: bool = True
     faults: bool = True
     generation_strategy: Literal["exhaustive", "pairwise", "representative"] = "exhaustive"

@@ -19,6 +19,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Parallel test execution** — run independent test cases concurrently with `--workers`
 - **Test case filtering** — select cases by ID pattern, target, step, or fault status with `-k`, `--target`, `--has-step`, `--fault-only`, `--no-fault`
 - **Dry-run mode** — preview test cases without executing them with `--dry-run`; shows resolved commands, callables, and cleanup steps
+- **Scalability controls** — prevent combinatorial explosion with `max_graph_nodes`, `max_path_depth`, and `max_state_depth` limits on graph building and case generation
 - **Retry / flaky test handling** — automatic retries for failed cases with `--retries` and `--retry-delay`; flaky detection when a case fails then passes on retry
 - **Lifecycle hooks** — `@suite_setup` / `@suite_teardown` run once before/after all cases; `@case_setup` / `@case_teardown` run before/after each case; teardown hooks always fire, even on failure
 - **Logging infrastructure** — structured logging with `--verbose`, `--debug`, and `--log-file` flags; thread-aware output for parallel execution
@@ -516,6 +517,7 @@ testweaver run <file> [-o file] [--timeout 300] [-w 4] [-p key=value]  # Run tes
                [--retries N] [--retry-delay S]       # Retry failed cases
                [--format json|text|junit|tap|html]
                [--dry-run]                           # Preview without executing
+               [--max-graph-nodes N] [--max-path-depth N] [--max-state-depth N]
                [-v] [--debug] [--log-file path]     # Logging options
 testweaver analyze <results.json> [-d file]         # Analyze results
 testweaver graph <file> [--format json|text|dot|mermaid] [-o file] [-v]  # Show/export graph
@@ -619,6 +621,43 @@ For Python callable operations, the output shows the function's qualified name i
 ```
 
 All filtering options (`-k`, `--target`, `--has-step`, `--fault-only`, `--no-fault`) work with `--dry-run`. The `--format` flag is ignored since there are no execution results to format.
+
+## Scalability Controls
+
+TestWeaver's graph-based case generation can produce a combinatorial explosion on large definitions — many operations with overlapping state transitions create exponentially many graph nodes and test paths. Three controls prevent this:
+
+| Control | YAML Field | CLI Flag | Default | What it limits |
+|---------|-----------|----------|---------|----------------|
+| Graph size | `max_graph_nodes` | `--max-graph-nodes` | 500 | Max nodes discovered during BFS graph building |
+| Path depth | `max_path_depth` | `--max-path-depth` | 20 | Max steps in any test case path |
+| State complexity | `max_state_depth` | `--max-state-depth` | 0 (off) | Skip states with more than N active entries |
+
+```bash
+testweaver run my_test.yaml --max-graph-nodes 100    # Smaller graph
+testweaver run my_test.yaml --max-path-depth 10      # Shorter test cases
+testweaver run my_test.yaml --max-state-depth 5      # Skip complex states
+```
+
+### YAML Configuration
+
+```yaml
+suite:
+  name: large_test
+  targets: [check_vm]
+  max_graph_nodes: 200
+  max_path_depth: 15
+  max_state_depth: 8
+```
+
+CLI flags override YAML values. When a limit is hit during graph building, a warning is logged (visible with `-v` or `--debug`).
+
+### When to Tune
+
+- **`max_graph_nodes`** — lower this when graph building is slow or consuming too much memory. The graph has many nodes when operations create many independent states (e.g., multi-instance namespaces with several devices).
+- **`max_path_depth`** — lower this when generated cases have too many steps. The default of 20 allows paths up to 20 edges long; most practical tests are much shorter.
+- **`max_state_depth`** — set this when states accumulate many entries (e.g., multiple devices each with several sub-states). A value of 0 means no limit.
+
+See [docs/examples.md](docs/examples.md#scalability-controls) for more examples.
 
 ## Retry / Flaky Test Handling
 

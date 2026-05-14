@@ -172,13 +172,27 @@ def validate(path: str, verbose: bool, debug: bool) -> None:
               help="Exclude fault-injection cases")
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Show INFO-level logs")
 @click.option("--debug", is_flag=True, default=False, help="Show DEBUG-level logs")
+@click.option("--max-graph-nodes", type=int, default=None,
+              help="Override max graph nodes (default: 500)")
+@click.option("--max-path-depth", type=int, default=None,
+              help="Override max path depth (default: 20)")
+@click.option("--max-state-depth", type=int, default=None,
+              help="Override max state depth (default: 0 = no limit)")
 def generate(path: str, fmt: str, param: tuple[str, ...],
              filters: tuple[str, ...], filter_targets: tuple[str, ...],
              filter_steps: tuple[str, ...], fault_only: bool,
-             no_fault: bool, verbose: bool, debug: bool) -> None:
+             no_fault: bool, verbose: bool, debug: bool,
+             max_graph_nodes: int | None, max_path_depth: int | None,
+             max_state_depth: int | None) -> None:
     """Generate test cases from a definition file."""
     _configure_logging(verbose=verbose, debug=debug)
     definition = load_definition(path)
+    if max_graph_nodes is not None:
+        definition.suite.max_graph_nodes = max_graph_nodes
+    if max_path_depth is not None:
+        definition.suite.max_path_depth = max_path_depth
+    if max_state_depth is not None:
+        definition.suite.max_state_depth = max_state_depth
     if param:
         overrides = _parse_param_overrides(param)
         definition.suite.params.update(overrides)
@@ -238,21 +252,39 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
               help="Also write logs to this file")
 @click.option("--dry-run", is_flag=True, default=False,
               help="Preview test cases without executing them")
+@click.option("--max-graph-nodes", type=int, default=None,
+              help="Override max graph nodes (default: 500)")
+@click.option("--max-path-depth", type=int, default=None,
+              help="Override max path depth (default: 20)")
+@click.option("--max-state-depth", type=int, default=None,
+              help="Override max state depth (default: 0 = no limit)")
 def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str, ...],
         workers: int, retries: int, retry_delay: float,
         filters: tuple[str, ...], filter_targets: tuple[str, ...],
         filter_steps: tuple[str, ...], fault_only: bool, no_fault: bool,
-        verbose: bool, debug: bool, log_file: str | None, dry_run: bool) -> None:
+        verbose: bool, debug: bool, log_file: str | None, dry_run: bool,
+        max_graph_nodes: int | None, max_path_depth: int | None,
+        max_state_depth: int | None) -> None:
     """Run test cases from a definition file."""
     _configure_logging(verbose=verbose, debug=debug, log_file=log_file, workers=workers)
     definition = load_definition(path)
+    if max_graph_nodes is not None:
+        definition.suite.max_graph_nodes = max_graph_nodes
+    if max_path_depth is not None:
+        definition.suite.max_path_depth = max_path_depth
+    if max_state_depth is not None:
+        definition.suite.max_state_depth = max_state_depth
     if param:
         overrides = _parse_param_overrides(param)
         definition.suite.params.update(overrides)
 
     from .graph import build_graph
     param_choices = definition.suite.param_choices or None
-    graph = build_graph(definition.operations, param_choices=param_choices)
+    graph = build_graph(
+        definition.operations, param_choices=param_choices,
+        max_nodes=definition.suite.max_graph_nodes,
+        max_state_depth=definition.suite.max_state_depth,
+    )
     cases = generate_cases(definition, graph)
     cases = filter_cases(
         cases,
