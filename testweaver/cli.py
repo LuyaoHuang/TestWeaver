@@ -9,7 +9,7 @@ import click
 from . import __version__
 from .analyzer import find_failures, suggest_debug, summarize_run
 from .engine import run_all
-from .graph import build_graph, explain_graph, generate_cases
+from .graph import build_graph, explain_graph, export_graph, generate_cases
 from .schema import CaseResult, TestDefinition, export_json_schema, load_definition
 
 
@@ -157,10 +157,21 @@ def analyze(path: str, definition: str | None) -> None:
 
 @main.command("graph")
 @click.argument("path", type=click.Path(exists=True))
-@click.option("--format", "fmt", type=click.Choice(["json", "text"]), default="json")
-def show_graph(path: str, fmt: str) -> None:
+@click.option("--format", "fmt",
+              type=click.Choice(["json", "text", "dot", "mermaid"]), default="json")
+@click.option("--output", "-o", type=click.Path(), help="Save output to file")
+def show_graph(path: str, fmt: str, output: str | None) -> None:
     """Show the dependency graph for a definition file."""
     definition = load_definition(path)
+
+    if fmt in ("dot", "mermaid"):
+        result = export_graph(definition, fmt)
+        click.echo(result)
+        if output:
+            Path(output).write_text(result)
+            click.echo(f"Graph saved to {output}", err=True)
+        return
+
     info = explain_graph(definition)
 
     if fmt == "json":

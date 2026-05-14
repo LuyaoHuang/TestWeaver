@@ -947,3 +947,131 @@ def explain_graph(
         result["fault_operations"] = fault_summary
 
     return result
+
+
+def _node_label(env: Env) -> str:
+    """Build a human-readable label for a graph node."""
+    states = env.to_flat_set()
+    if not states:
+        return "(initial)"
+    return ", ".join(sorted(states))
+
+
+def _dot_escape(text: str) -> str:
+    """Escape a string for use inside DOT double-quoted labels."""
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+_EDGE_COLORS = {
+    "action": "#2196F3",
+    "setup": "#4CAF50",
+    "cleanup": "#F44336",
+    "fault": "#FF9800",
+}
+
+_DOT_NODE_STYLES = {
+    "initial": 'shape=circle, style=filled, fillcolor=lightblue',
+    "dead_end": 'shape=octagon, style=filled, fillcolor=lightsalmon',
+    "normal": 'shape=box, style=filled, fillcolor=lightyellow',
+}
+
+
+def export_graph(
+    definition: TestDefinition,
+    fmt: str,
+    graph: nx.MultiDiGraph | None = None,
+) -> str:
+    """Export the dependency graph as DOT or Mermaid markup.
+
+    Args:
+        definition: Complete test definition.
+        fmt: Output format, either ``"dot"`` or ``"mermaid"``.
+        graph: Pre-built graph; built automatically if None.
+
+    Returns:
+        The graph rendered as a string in the requested format.
+    """
+    if graph is None:
+        graph = build_graph(
+            definition.operations,
+            param_choices=definition.suite.param_choices or None,
+        )
+
+    initial = Env()
+    op_types = {op.name: op.type for op in definition.operations}
+
+    nodes = list(graph.nodes)
+    node_ids = {node: f"s{i}" for i, node in enumerate(nodes)}
+
+    dead_ends: set[Env] = set()
+    for node in nodes:
+        if node != initial and graph.in_degree(node) >= 1 and graph.out_degree(node) == 0:
+            dead_ends.add(node)
+
+    if fmt == "dot":
+        return _export_dot(graph, nodes, node_ids, initial, dead_ends, op_types)
+    return _export_mermaid(graph, nodes, node_ids, initial, dead_ends, op_types)
+
+
+def _export_dot(
+    graph: nx.MultiDiGraph,
+    nodes: list[Env],
+    node_ids: dict[Env, str],
+    initial: Env,
+    dead_ends: set[Env],
+    op_types: dict[str, str],
+) -> str:
+    lines = ["digraph TestWeaver {", "  rankdir=LR;"]
+
+    for node in nodes:
+        nid = node_ids[node]
+        label = _dot_escape(_node_label(node))
+        if node == initial:
+            style = _DOT_NODE_STYLES["initial"]
+        elif node in dead_ends:
+            style = _DOT_NODE_STYLES["dead_end"]
+        else:
+            style = _DOT_NODE_STYLES["normal"]
+        lines.append(f'  {nid} [label="{label}", {style}];')
+
+    for u, v, data in graph.edges(data=True):
+        op_name = data["operation"]
+        color = _EDGE_COLORS.get(op_types.get(op_name, ""), "#333333")
+        label = _dot_escape(op_name)
+        lines.append(f'  {node_ids[u]} -> {node_ids[v]} '
+                      f'[label="{label}", color="{color}", fontcolor="{color}"];')
+
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def _mermaid_escape(text: str) -> str:
+    """Escape a string for Mermaid node labels."""
+    return text.replace('"', '#quot;')
+
+
+def _export_mermaid(
+    graph: nx.MultiDiGraph,
+    nodes: list[Env],
+    node_ids: dict[Env, str],
+    initial: Env,
+    dead_ends: set[Env],
+    op_types: dict[str, str],
+) -> str:
+    lines = ["graph LR"]
+
+    for node in nodes:
+        nid = node_ids[node]
+        label = _mermaid_escape(_node_label(node))
+        if node == initial:
+            lines.append(f'  {nid}(("{label}"))')
+        elif node in dead_ends:
+            lines.append(f'  {nid}{{{{"{label}"}}}}')
+        else:
+            lines.append(f'  {nid}["{label}"]')
+
+    for u, v, data in graph.edges(data=True):
+        op_name = data["operation"]
+        lines.append(f"  {node_ids[u]} -->|{op_name}| {node_ids[v]}")
+
+    return "\n".join(lines)

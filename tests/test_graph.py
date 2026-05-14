@@ -1,5 +1,5 @@
 from testweaver.schema import Operation, TestSuite as Suite, TestDefinition as Defn
-from testweaver.graph import build_graph, generate_cases, explain_graph
+from testweaver.graph import build_graph, generate_cases, explain_graph, export_graph
 
 
 def _make_definition(operations, targets, **kwargs):
@@ -127,3 +127,49 @@ def test_case_ids_are_unique():
     cases = generate_cases(defn)
     ids = [c.case_id for c in cases]
     assert len(ids) == len(set(ids))
+
+
+def test_export_graph_dot():
+    ops = [
+        Operation(name="setup", type="action", provides=["ready"]),
+        Operation(name="check", type="check", requires=["ready"]),
+        Operation(name="teardown", type="cleanup", requires=["ready"], clears=["ready"]),
+    ]
+    defn = _make_definition(ops, ["check"])
+    dot = export_graph(defn, "dot")
+    assert dot.startswith("digraph TestWeaver {")
+    assert "rankdir=LR" in dot
+    assert "setup" in dot
+    assert "teardown" in dot
+    assert 's0' in dot
+    assert 's1' in dot
+    assert "->" in dot
+    assert dot.strip().endswith("}")
+
+
+def test_export_graph_mermaid():
+    ops = [
+        Operation(name="setup", type="action", provides=["ready"]),
+        Operation(name="check", type="check", requires=["ready"]),
+        Operation(name="teardown", type="cleanup", requires=["ready"], clears=["ready"]),
+    ]
+    defn = _make_definition(ops, ["check"])
+    mermaid = export_graph(defn, "mermaid")
+    assert mermaid.startswith("graph LR")
+    assert "-->|setup|" in mermaid
+    assert "-->|teardown|" in mermaid
+    assert "(initial)" in mermaid
+
+
+def test_export_graph_labels():
+    ops = [
+        Operation(name="step1", type="action", provides=["a"]),
+        Operation(name="step2", type="action", provides=["b"], requires=["a"]),
+        Operation(name="check", type="check", requires=["a", "b"]),
+    ]
+    defn = _make_definition(ops, ["check"])
+    dot = export_graph(defn, "dot")
+    assert "(initial)" in dot
+    assert '"a"' in dot or "a, b" in dot
+    assert "_struct_key" not in dot
+    assert "Env(" not in dot

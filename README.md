@@ -14,6 +14,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - **Multi-instance namespaces** — model multiple devices of the same type (`TPM:tpm0`, `TPM:tpm1`) with independent states in a single graph, wildcard queries (`TPM:tpm*.ready`), and generation strategies to control state-space explosion
 - **Graph modifiers** — runtime modifiers (`EdgeGuard`, `TransientHook`, `TransitionObserver`) let operations influence future execution when the graph can't be fully static
 - **Structured JSON output** — every command outputs machine-readable JSON
+- **Graph visualization** — export dependency graphs as DOT (Graphviz) or Mermaid for visual exploration
 - **Built-in analysis** — failure detection, debug suggestions, and performance summaries
 
 ## Installation
@@ -198,6 +199,26 @@ TestWeaver builds a directed graph where:
 - **Edges** = operations that transition between states
 
 The graph engine finds all valid paths from the initial empty state to states where each target's `requires` are satisfied.
+
+### Graph Visualization
+
+Export the dependency graph as DOT (Graphviz) or Mermaid for visual exploration:
+
+```bash
+testweaver graph my_test.yaml --format dot          # DOT output to stdout
+testweaver graph my_test.yaml --format dot -o g.dot # Save to file
+testweaver graph my_test.yaml --format mermaid      # Mermaid output
+```
+
+Nodes are styled by role: initial state (circle/blue), dead-end states (octagon/salmon), and normal states (box/yellow). Edges are colored by operation type: actions (blue), setup (green), cleanup (red), and faults (orange).
+
+Pipe DOT output to Graphviz to render an image:
+
+```bash
+testweaver graph my_test.yaml --format dot | dot -Tpng -o graph.png
+```
+
+Paste Mermaid output into any Mermaid-compatible renderer (GitHub markdown, Mermaid Live Editor, etc.).
 
 ### Multiple Paths = Multiple Test Cases
 
@@ -390,7 +411,7 @@ testweaver validate <file>                          # Validate definition
 testweaver generate <file> [--format json|text] [-p key=value]  # Generate cases
 testweaver run <file> [-o results.json] [--timeout 300] [-p key=value]  # Run tests
 testweaver analyze <results.json> [-d file]         # Analyze results
-testweaver graph <file> [--format json|text]        # Show dependency graph
+testweaver graph <file> [--format json|text|dot|mermaid] [-o file]  # Show/export dependency graph
 testweaver matrix <file> [--format json|text]       # Preview parameter combos
 testweaver schema [--type definition|results|summary|test_case]  # Export JSON Schema
 ```
