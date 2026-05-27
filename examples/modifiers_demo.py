@@ -22,7 +22,7 @@ from testweaver import (
 @action
 @provides('vm.config')
 @excludes('vm.config')
-def define_vm(params):
+def define_vm(params, env):
     print(f"  virsh define {params.get('guest_name', 'testvm')}.xml")
 
 
@@ -30,7 +30,7 @@ def define_vm(params):
 @requires('vm.config')
 @excludes('vm.active')
 @provides('vm.active')
-def start_vm(params):
+def start_vm(params, env):
     print(f"  virsh start {params.get('guest_name', 'testvm')}")
 
 
@@ -38,7 +38,7 @@ def start_vm(params):
 @requires('vm.config')
 @excludes('vm.active')
 @provides('vm.active')
-def start_vm_alt(params):
+def start_vm_alt(params, env):
     """Alternative start path (without hugepage dependency)."""
     print(f"  virsh start {params.get('guest_name', 'testvm')} --skip-hugepages")
 
@@ -49,7 +49,7 @@ def start_vm_alt(params):
 @requires('vm.config')
 @excludes('hugepage_config')
 @provides('hugepage_config')
-def configure_hugepages(params):
+def configure_hugepages(params, env):
     """Configure hugepages on the host.
 
     When hugetlbfs_mount is empty, hugepages are disabled and
@@ -70,7 +70,7 @@ def configure_hugepages(params):
 @requires('vm.active')
 @excludes('vm.active.memtune')
 @provides('vm.active.memtune')
-def set_memtune(params):
+def set_memtune(params, env):
     """Set memory tuning parameters.
 
     When restart_libvirtd param is set, injects a libvirtd restart
@@ -96,7 +96,7 @@ def set_memtune(params):
 @requires('vm.active')
 @excludes('vm.active.memdevice')
 @provides('vm.active.memdevice')
-def attach_mem_device(params):
+def attach_mem_device(params, env):
     """Hot-attach a memory device and register audit observer."""
     print(f"  virsh attach-device {params.get('guest_name', 'testvm')} mem.xml")
 
@@ -115,19 +115,19 @@ def attach_mem_device(params):
 
 @check
 @requires('vm.active')
-def check_vm_running(params):
+def check_vm_running(params, env):
     print(f"  virsh domstate {params.get('guest_name', 'testvm')}")
 
 
 @check
 @requires('vm.active.memtune')
-def check_memtune(params):
+def check_memtune(params, env):
     print(f"  virsh memtune {params.get('guest_name', 'testvm')}")
 
 
 @check
 @requires('vm.active.memdevice')
-def check_mem_device(params):
+def check_mem_device(params, env):
     print(f"  virsh dommemstat {params.get('guest_name', 'testvm')}")
 
 
@@ -136,7 +136,7 @@ def check_mem_device(params):
 @cleanup
 @requires('vm.active')
 @clears('vm.active')
-def destroy_vm(params):
+def destroy_vm(params, env):
     print(f"  virsh destroy {params.get('guest_name', 'testvm')}")
 
 
@@ -144,5 +144,5 @@ def destroy_vm(params):
 @requires('vm.config')
 @excludes('vm.active')
 @clears('vm.config')
-def undefine_vm(params):
+def undefine_vm(params, env):
     print(f"  virsh undefine {params.get('guest_name', 'testvm')}")

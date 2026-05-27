@@ -141,7 +141,7 @@ def test_fault_not_in_graph():
         Operation(
             name="fault_start", type="fault", fault_for="start",
             requires=["enhanced"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
         Operation(name="teardown", type="cleanup",
                   requires=["active"], clears=["active"]),
@@ -200,7 +200,7 @@ def test_fault_cases_generated():
         Operation(
             name="hugepage_error", type="fault", fault_for="start",
             requires=["vm.config.hugepage"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
     ]
     defn = _make_definition(ops, ["check_vm"])
@@ -226,7 +226,7 @@ def test_fault_case_ids_prefixed():
         Operation(
             name="hugepage_error", type="fault", fault_for="start",
             requires=["vm.config.hugepage"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
     ]
     defn = _make_definition(ops, ["check_vm"])
@@ -241,7 +241,7 @@ def test_fault_cleanup_from_pre_fault_state():
         Operation(
             name="hugepage_error", type="fault", fault_for="start",
             requires=["vm.config.hugepage"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
     ]
     defn = _make_definition(ops, ["check_vm"])
@@ -264,7 +264,7 @@ def test_fault_with_no_extra_requires():
         Operation(name="check", type="check", requires=["done"]),
         Operation(
             name="fault_do_thing", type="fault", fault_for="do_thing",
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
         Operation(name="clean_done", type="cleanup",
                   requires=["done"], clears=["done"]),
@@ -293,12 +293,12 @@ def test_multiple_faults_for_same_target():
         Operation(
             name="fault_a", type="fault", fault_for="do_thing",
             requires=["feature_a"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
         Operation(
             name="fault_b", type="fault", fault_for="do_thing",
             requires=["feature_b"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
         Operation(name="clean_done", type="cleanup",
                   requires=["done"], clears=["done"]),
@@ -325,7 +325,7 @@ def test_no_fault_cases_when_disabled():
         Operation(
             name="hugepage_error", type="fault", fault_for="start",
             requires=["vm.config.hugepage"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
     ]
     defn = _make_definition(ops, ["check_vm"], faults=False)
@@ -343,7 +343,7 @@ def test_no_fault_cases_when_conditions_unmet():
         Operation(
             name="fault_impossible", type="fault", fault_for="do_thing",
             requires=["never_provided"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
         Operation(name="clean", type="cleanup",
                   requires=["ready"], clears=["ready"]),
@@ -361,24 +361,24 @@ def test_no_fault_cases_when_conditions_unmet():
 def test_run_fault_case_callable():
     called = []
 
-    def fault_fn(params):
+    def fault_fn(params, env):
         called.append("fault_executed")
 
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="do_thing", type="action",
                   requires=["ready"], provides=["done"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="check", type="check", requires=["done"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(
             name="fault_do_thing", type="fault", fault_for="do_thing",
             callable=fault_fn,
         ),
         Operation(name="clean_ready", type="cleanup",
                   requires=["ready"], clears=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"])
     cases = generate_cases(defn)
@@ -394,20 +394,20 @@ def test_run_fault_case_callable():
 def test_run_fault_case_cleanup_runs():
     cleanup_called = []
 
-    def cleanup_fn(params):
+    def cleanup_fn(params, env):
         cleanup_called.append("cleaned")
 
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="do_thing", type="action",
                   requires=["ready"], provides=["done"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="check", type="check", requires=["done"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(
             name="fault_do_thing", type="fault", fault_for="do_thing",
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
         Operation(name="clean_ready", type="cleanup",
                   requires=["ready"], clears=["ready"],
@@ -425,31 +425,31 @@ def test_run_fault_case_cleanup_runs():
 def test_run_all_includes_fault_cases():
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="enhance", type="action",
                   requires=["ready"], provides=["enhanced"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="do_thing", type="action",
                   requires=["ready"], provides=["done"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="check", type="check", requires=["done"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(
             name="fault_do_thing", type="fault", fault_for="do_thing",
             requires=["enhanced"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
         Operation(name="clean_done", type="cleanup",
                   requires=["done"], clears=["done"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="clean_enhanced", type="cleanup",
                   requires=["enhanced"], clears=["enhanced"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="clean_ready", type="cleanup",
                   requires=["ready"],
                   excludes=["done", "enhanced"],
                   clears=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"])
     cases = generate_cases(defn)
@@ -504,7 +504,7 @@ def test_explain_graph_includes_fault_ops():
         Operation(
             name="hugepage_error", type="fault", fault_for="start",
             requires=["vm.config.hugepage"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
     ]
     defn = _make_definition(ops, ["check_vm"])
@@ -548,12 +548,12 @@ def test_fault_cases_respect_strategy_representative():
         Operation(
             name="fault_a", type="fault", fault_for="do_thing",
             requires=["via_a"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
         Operation(
             name="fault_b", type="fault", fault_for="do_thing",
             requires=["via_b"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ),
         Operation(name="c_done", type="cleanup",
                   requires=["done"], clears=["done"]),

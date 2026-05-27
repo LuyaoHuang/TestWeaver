@@ -25,6 +25,7 @@ from .schema import (
     ObserverResult,
     Operation,
     ProgressEvent,
+    StateData,
     StepResult,
     TestCase,
     TestDefinition,
@@ -61,9 +62,10 @@ def _run_command(command: str, timeout: int = 300) -> tuple[int, str, str]:
 def _run_callable(
     func: Callable[..., Any],
     params: dict[str, Any],
+    env: Env,
     timeout: int = 300,
 ) -> tuple[bool, str, str, Any]:
-    """Call a Python callable with params and capture success, output, and return value."""
+    """Call a Python callable with params and env, capture success/output/return."""
     logger.debug("Calling %s (timeout=%ds)", getattr(func, "__qualname__", func), timeout)
 
     use_alarm = threading.current_thread() is threading.main_thread()
@@ -75,7 +77,7 @@ def _run_callable(
         old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
         signal.alarm(timeout)
     try:
-        ret = func(params)
+        ret = func(params, env)
         if use_alarm:
             signal.alarm(0)
         logger.debug("Callable succeeded")
@@ -91,6 +93,24 @@ def _run_callable(
     finally:
         if use_alarm:
             signal.signal(signal.SIGALRM, old_handler)
+
+
+def _apply_state_data(
+    sd: StateData, operation: Operation, env: Env,
+) -> dict[str, Any]:
+    """Apply StateData values to env nodes and return the resolved mapping.
+
+    Auto-maps keyword-style data to the operation's single ``provides``
+    path when no explicit paths are present in the values dict.
+    """
+    values = dict(sd.values)
+    if values and operation.provides and len(operation.provides) == 1:
+        has_path_keys = any('.' in k for k in values)
+        if not has_path_keys:
+            values = {operation.provides[0]: values}
+    for path, data in values.items():
+        env.set_value(path, data)
+    return values
 
 
 def _extract_modifier(value: Any) -> GraphModifier | None:
@@ -160,6 +180,7 @@ def _run_hooks(
 def run_step(
     operation: Operation,
     params: dict[str, Any],
+    env: Env,
     timeout: int = 300,
 ) -> tuple[StepResult, GraphModifier | None]:
     """Execute a single test step and return its result.
@@ -171,6 +192,9 @@ def run_step(
         operation: The operation to execute.
         params: Parameter dict passed to the callable or substituted
             into the shell command.
+        env: Current runtime environment.  Callables receive this as
+            their second argument and can read/write node values via
+            ``env.get_node(path).value`` or ``env.set_value(path, v)``.
         timeout: Maximum execution time in seconds for shell commands.
 
     Returns:
@@ -180,8 +204,11 @@ def run_step(
 
     if operation.callable is not None:
         start = time.monotonic()
-        ok, stdout, stderr, ret = _run_callable(operation.callable, params, timeout)
+        ok, stdout, stderr, ret = _run_callable(operation.callable, params, env, timeout)
         duration = (time.monotonic() - start) * 1000
+        env_data = None
+        if ok and isinstance(ret, StateData):
+            env_data = _apply_state_data(ret, operation, env)
         modifier = _extract_modifier(ret) if ok else None
         result = StepResult(
             operation=operation.name,
@@ -190,6 +217,7 @@ def run_step(
             stdout=stdout,
             stderr=stderr,
             error=None if ok else stderr,
+            env_data=env_data,
         )
         if modifier is not None:
             _record_modifier(result, modifier)
@@ -286,12 +314,13 @@ def _run_observer(obs: TransitionObserver, params: dict[str, Any]) -> ObserverRe
 def _run_verify(
     operation: Operation,
     params: dict[str, Any],
+    env: Env,
     timeout: int = 300,
 ) -> ObserverResult | None:
     """Run the operation's verify callback or command, if defined."""
     if operation.verify_callable is not None:
         start = time.monotonic()
-        ok, _, stderr, _ = _run_callable(operation.verify_callable, params, timeout)
+        ok, _, stderr, _ = _run_callable(operation.verify_callable, params, env, timeout)
         duration = (time.monotonic() - start) * 1000
         if ok:
             return ObserverResult(
@@ -496,12 +525,12 @@ def run_case(
             if instance_params:
                 step_params.update(instance_params)
             step_timeout = op.timeout if op.timeout is not None else timeout
-            result, modifier = run_step(op, step_params, step_timeout)
+            result, modifier = run_step(op, step_params, current_env, step_timeout)
             step_results.append(result)
 
             # Run verify if step passed
             if result.status == "pass":
-                verify_result = _run_verify(op, step_params, step_timeout)
+                verify_result = _run_verify(op, step_params, current_env, step_timeout)
                 if verify_result is not None:
                     result.verify_result = verify_result
                     if verify_result.status != "pass":
@@ -554,7 +583,7 @@ def run_case(
                         cleanup_params.update(inst_params)
                 if cleanup_op:
                     cleanup_timeout = cleanup_op.timeout if cleanup_op.timeout is not None else timeout
-                    cleanup_result, _ = run_step(cleanup_op, cleanup_params, cleanup_timeout)
+                    cleanup_result, _ = run_step(cleanup_op, cleanup_params, current_env, cleanup_timeout)
                     step_results.append(cleanup_result)
     finally:
         if definition.hooks.case_teardown:

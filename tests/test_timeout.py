@@ -5,6 +5,7 @@ import time
 import pytest
 
 from testweaver.decorators import action, check, cleanup, provides, requires, clears, timeout
+from testweaver.env import Env
 from testweaver.engine import _run_callable, run_all, run_step
 from testweaver.loader import load_module, extract_operations
 from testweaver.schema import (
@@ -141,18 +142,18 @@ def test_operation_timeout_set():
 
 
 def test_run_callable_succeeds_within_timeout():
-    def fast_func(params):
+    def fast_func(params, env):
         return "ok"
-    ok, stdout, stderr, ret = _run_callable(fast_func, {}, timeout=5)
+    ok, stdout, stderr, ret = _run_callable(fast_func, {}, Env(), timeout=5)
     assert ok is True
     assert ret == "ok"
 
 
 def test_run_callable_timeout_enforced():
-    def slow_func(params):
+    def slow_func(params, env):
         time.sleep(10)
     start = time.monotonic()
-    ok, stdout, stderr, ret = _run_callable(slow_func, {}, timeout=1)
+    ok, stdout, stderr, ret = _run_callable(slow_func, {}, Env(), timeout=1)
     elapsed = time.monotonic() - start
     assert ok is False
     assert "timed out" in stderr.lower()
@@ -160,9 +161,9 @@ def test_run_callable_timeout_enforced():
 
 
 def test_run_callable_exception_still_caught():
-    def bad_func(params):
+    def bad_func(params, env):
         raise ValueError("broken")
-    ok, stdout, stderr, ret = _run_callable(bad_func, {}, timeout=5)
+    ok, stdout, stderr, ret = _run_callable(bad_func, {}, Env(), timeout=5)
     assert ok is False
     assert "broken" in stderr
 
@@ -172,18 +173,18 @@ def test_run_callable_exception_still_caught():
 
 def test_per_step_timeout_overrides_global():
     """Operation with timeout=1 should time out even when global is 300."""
-    def slow_action(params):
+    def slow_action(params, env):
         time.sleep(10)
 
     ops = [
         Operation(name="setup", type="setup", provides=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="slow", type="action", requires=["ready"],
                   provides=["done"], callable=slow_action, timeout=1),
         Operation(name="check", type="check", requires=["done"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="teardown", type="cleanup", requires=["ready"],
-                  clears=["ready", "done"], callable=lambda p: None),
+                  clears=["ready", "done"], callable=lambda *a: None),
     ]
     defn = TestDefinition(
         operations=ops,
@@ -207,11 +208,11 @@ def test_global_timeout_used_when_no_per_step():
     """Operation without timeout= uses the global timeout and succeeds."""
     ops = [
         Operation(name="setup", type="setup", provides=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="check", type="check", requires=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="teardown", type="cleanup", requires=["ready"],
-                  clears=["ready"], callable=lambda p: None),
+                  clears=["ready"], callable=lambda *a: None),
     ]
     defn = TestDefinition(
         operations=ops,

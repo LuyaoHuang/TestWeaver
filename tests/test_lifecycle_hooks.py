@@ -47,11 +47,11 @@ def _make_definition(ops, targets, hooks=None, cleanup_flag=True, params=None):
 def _simple_ops():
     return [
         Operation(name="do_setup", type="setup", provides=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="do_check", type="check", requires=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="do_cleanup", type="cleanup", requires=["ready"],
-                  clears=["ready"], callable=lambda p: None),
+                  clears=["ready"], callable=lambda *a: None),
     ]
 
 
@@ -147,16 +147,16 @@ class TestCaseHooks:
         def case_setup_fn(ctx):
             log.append('case_setup')
 
-        def do_action(params):
+        def do_action(params, env):
             log.append('action')
 
         ops = [
             Operation(name="act", type="action", provides=["done"],
                       callable=do_action),
             Operation(name="chk", type="check", requires=["done"],
-                      callable=lambda p: log.append('check')),
+                      callable=lambda *a: log.append('check')),
             Operation(name="clr", type="cleanup", requires=["done"],
-                      clears=["done"], callable=lambda p: None),
+                      clears=["done"], callable=lambda *a: None),
         ]
         hooks = LifecycleHooks(case_setup=[case_setup_fn])
         defn = _make_definition(ops, ["chk"], hooks=hooks)
@@ -177,11 +177,11 @@ class TestCaseHooks:
 
         ops = [
             Operation(name="act", type="action", provides=["done"],
-                      callable=lambda p: log.append('action')),
+                      callable=lambda *a: log.append('action')),
             Operation(name="chk", type="check", requires=["done"],
-                      callable=lambda p: log.append('check')),
+                      callable=lambda *a: log.append('check')),
             Operation(name="clr", type="cleanup", requires=["done"],
-                      clears=["done"], callable=lambda p: log.append('cleanup')),
+                      clears=["done"], callable=lambda *a: log.append('cleanup')),
         ]
         hooks = LifecycleHooks(case_teardown=[case_teardown_fn])
         defn = _make_definition(ops, ["chk"], hooks=hooks)
@@ -200,9 +200,9 @@ class TestCaseHooks:
 
         ops = [
             Operation(name="fail_op", type="action", provides=["done"],
-                      callable=lambda p: (_ for _ in ()).throw(RuntimeError("boom"))),
+                      callable=lambda *a: (_ for _ in ()).throw(RuntimeError("boom"))),
             Operation(name="chk", type="check", requires=["done"],
-                      callable=lambda p: None),
+                      callable=lambda *a: None),
         ]
         hooks = LifecycleHooks(case_teardown=[case_teardown_fn])
         defn = _make_definition(ops, ["chk"], hooks=hooks, cleanup_flag=False)
@@ -221,11 +221,11 @@ class TestCaseHooks:
 
         ops = [
             Operation(name="act", type="action", provides=["done"],
-                      callable=lambda p: log.append('action')),
+                      callable=lambda *a: log.append('action')),
             Operation(name="chk", type="check", requires=["done"],
-                      callable=lambda p: log.append('check')),
+                      callable=lambda *a: log.append('check')),
             Operation(name="clr", type="cleanup", requires=["done"],
-                      clears=["done"], callable=lambda p: log.append('cleanup')),
+                      clears=["done"], callable=lambda *a: log.append('cleanup')),
         ]
         hooks = LifecycleHooks(case_setup=[failing_setup])
         defn = _make_definition(ops, ["chk"], hooks=hooks)
@@ -333,11 +333,11 @@ class TestSuiteHooks:
 
         ops = [
             Operation(name="act", type="action", provides=["done"],
-                      callable=lambda p: log.append('action')),
+                      callable=lambda *a: log.append('action')),
             Operation(name="chk", type="check", requires=["done"],
-                      callable=lambda p: None),
+                      callable=lambda *a: None),
             Operation(name="clr", type="cleanup", requires=["done"],
-                      clears=["done"], callable=lambda p: None),
+                      clears=["done"], callable=lambda *a: None),
         ]
         hooks = LifecycleHooks(suite_setup=[ss])
         defn = _make_definition(ops, ["chk"], hooks=hooks)
@@ -358,11 +358,11 @@ class TestSuiteHooks:
 
         ops = [
             Operation(name="act", type="action", provides=["done"],
-                      callable=lambda p: log.append('action')),
+                      callable=lambda *a: log.append('action')),
             Operation(name="chk", type="check", requires=["done"],
-                      callable=lambda p: None),
+                      callable=lambda *a: None),
             Operation(name="clr", type="cleanup", requires=["done"],
-                      clears=["done"], callable=lambda p: None),
+                      clears=["done"], callable=lambda *a: None),
         ]
         hooks = LifecycleHooks(suite_teardown=[st])
         defn = _make_definition(ops, ["chk"], hooks=hooks)

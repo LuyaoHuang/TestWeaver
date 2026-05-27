@@ -23,10 +23,10 @@ def test_verify_callable_passes():
 
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
-                  callable=lambda p: None,
-                  verify_callable=lambda p: verify_log.append("verified")),
+                  callable=lambda *a: None,
+                  verify_callable=lambda *a: verify_log.append("verified")),
         Operation(name="check", type="check", requires=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(case_id="t1", steps=["setup", "check"], target="check")
@@ -42,15 +42,15 @@ def test_verify_callable_passes():
 
 
 def test_verify_callable_fails():
-    def bad_verify(params):
+    def bad_verify(params, env):
         raise AssertionError("verify failed")
 
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
-                  callable=lambda p: None,
+                  callable=lambda *a: None,
                   verify_callable=bad_verify),
         Operation(name="check", type="check", requires=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(case_id="t1", steps=["setup", "check"], target="check")
@@ -67,15 +67,15 @@ def test_verify_callable_fails():
 def test_verify_skipped_on_step_failure():
     verify_log = []
 
-    def fail_step(params):
+    def fail_step(params, env):
         raise RuntimeError("step failed")
 
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
                   callable=fail_step,
-                  verify_callable=lambda p: verify_log.append("should not run")),
+                  verify_callable=lambda *a: verify_log.append("should not run")),
         Operation(name="check", type="check", requires=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(case_id="t1", steps=["setup", "check"], target="check")
@@ -89,18 +89,18 @@ def test_verify_skipped_on_step_failure():
 def test_cleanup_runs_after_verify_failure():
     cleanup_log = []
 
-    def bad_verify(params):
+    def bad_verify(params, env):
         raise AssertionError("verify failed")
 
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
-                  callable=lambda p: None,
+                  callable=lambda *a: None,
                   verify_callable=bad_verify),
         Operation(name="check", type="check", requires=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="teardown", type="cleanup", requires=["ready"],
                   clears=["ready"],
-                  callable=lambda p: cleanup_log.append("cleaned")),
+                  callable=lambda *a: cleanup_log.append("cleaned")),
     ]
     defn = _make_definition(ops, ["check"])
     case = TestCase(case_id="t1", steps=["setup", "check"], target="check",
@@ -114,9 +114,9 @@ def test_cleanup_runs_after_verify_failure():
 def test_no_verify_result_when_no_verify():
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="check", type="check", requires=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(case_id="t1", steps=["setup", "check"], target="check")
@@ -222,7 +222,7 @@ def test_verify_runs_before_modifiers():
 
     from testweaver.modifiers import TransitionObserver
 
-    def step_with_observer(params):
+    def step_with_observer(params, env):
         modifier_log.append("modifier_returned")
         return TransitionObserver(
             watch_ops=["check"],
@@ -233,9 +233,9 @@ def test_verify_runs_before_modifiers():
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
                   callable=step_with_observer,
-                  verify_callable=lambda p: verify_log.append("verified")),
+                  verify_callable=lambda *a: verify_log.append("verified")),
         Operation(name="check", type="check", requires=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(case_id="t1", steps=["setup", "check"], target="check")

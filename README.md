@@ -10,6 +10,7 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - Decorator-based definitions — `@provides`, `@requires`, `@clears`, `@excludes`, `@graft`, `@cut`
 - Hierarchical state model — states are trees (`vm.config.tpm`)
 - Automatic case generation — dependency graph finds all valid paths to each target
+- Runtime data flow — operations pass dynamic data (UUIDs, IPs) through `env` node values
 - Operation verification — `@verify_for` / `verify` YAML field
 - Graph modifiers — `EdgeGuard`, `TransientHook`, `TransitionObserver` for runtime decisions
 
@@ -49,25 +50,25 @@ from testweaver import action, check, cleanup, provides, requires, clears, verif
 
 @action
 @provides('file.exists')
-def create_file(params):
+def create_file(params, env):
     import subprocess
     subprocess.run('echo "hello world" > /tmp/test.txt', shell=True, check=True)
 
 @verify_for('create_file')
-def check_content(params):
+def check_content(params, env):
     import subprocess
     subprocess.run('grep -q "hello world" /tmp/test.txt', shell=True, check=True)
 
 @check
 @requires('file.exists')
-def check_file_exists(params):
+def check_file_exists(params, env):
     import subprocess
     subprocess.run('test -f /tmp/test.txt', shell=True, check=True)
 
 @cleanup
 @requires('file.exists')
 @clears('file.exists')
-def remove_file(params):
+def remove_file(params, env):
     import subprocess
     subprocess.run('rm -f /tmp/test.txt', shell=True, check=True)
 ```
@@ -139,6 +140,7 @@ testweaver graph my_test.yaml --format dot | dot -Tpng -o graph.png  # Visualize
 | [Logging](docs/examples/logging.md) | Logging configuration |
 | [Progress](docs/examples/progress.md) | Progress bar and callbacks |
 | [Lifecycle Hooks](docs/examples/lifecycle-hooks.md) | Suite and case setup/teardown |
+| [Data Flow](docs/examples/data-flow.md) | Passing runtime data between operations |
 | [Virtualization](docs/examples/virtualization.md) | libvirt/QEMU example modules |
 
 ## Virtualization Examples

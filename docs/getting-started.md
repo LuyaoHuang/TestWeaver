@@ -17,14 +17,14 @@ from testweaver import action, check, cleanup, provides, requires, clears
 
 @action
 @provides('file.exists')
-def create_file(params):
+def create_file(params, env):
     """Create a test file"""
     import subprocess
     subprocess.run('echo "hello world" > /tmp/test.txt', shell=True, check=True)
 
 @check
 @requires('file.exists')
-def check_file(params):
+def check_file(params, env):
     """Verify the file exists"""
     import subprocess
     subprocess.run('test -f /tmp/test.txt', shell=True, check=True)
@@ -32,7 +32,7 @@ def check_file(params):
 @cleanup
 @requires('file.exists')
 @clears('file.exists')
-def remove_file(params):
+def remove_file(params, env):
     """Remove the test file"""
     import subprocess
     subprocess.run('rm -f /tmp/test.txt', shell=True, check=True)
@@ -58,7 +58,7 @@ Add a second way to create the file:
 ```python
 @action
 @provides('file.exists')
-def create_file_alt(params):
+def create_file_alt(params, env):
     """Create the file using Python"""
     with open('/tmp/test.txt', 'w') as f:
         f.write('hello world')
@@ -74,7 +74,7 @@ Attach a verify callback to `create_file` so the content is checked immediately 
 from testweaver import verify_for
 
 @verify_for('create_file')
-def check_content(params):
+def check_content(params, env):
     """Runs automatically after create_file succeeds"""
     import subprocess
     subprocess.run('grep -q "hello world" /tmp/test.txt', shell=True, check=True)
@@ -175,7 +175,47 @@ Override from the command line:
 testweaver run simple_test.yaml -p filename=/tmp/other.txt --format text
 ```
 
-## Step 7: Visualize the Graph
+## Step 7: Pass Runtime Data Between Operations
+
+TestWeaver passes the `env` tree as the second argument to every operation callable. Use it to share dynamic data (UUIDs, IPs, config hashes) without polluting the global params:
+
+```python
+from testweaver import action, check, cleanup, provides, requires, clears, state_data
+
+@action
+@provides('vm.active')
+@excludes('vm.active')
+def provision_vm(params, env):
+    """Provision a VM — return runtime data via StateData."""
+    vm_uuid = "vm-" + str(hash(params.get('vm_name', 'testvm')))
+    return state_data({'vm.active': {'uuid': vm_uuid, 'ip': '10.0.0.42'}})
+
+@check
+@requires('vm.active')
+def verify_vm(params, env):
+    """Read the UUID that provision_vm wrote."""
+    node = env._get_node('vm.active')
+    vm_uuid = node.value['uuid']
+    print(f"Verifying VM {vm_uuid}")
+
+@cleanup
+@requires('vm.active')
+@clears('vm.active')
+def destroy_vm(params, env):
+    """Read the UUID to know which VM to tear down."""
+    node = env._get_node('vm.active')
+    print(f"Destroying {node.value['uuid']}")
+```
+
+Key points:
+- **Write**: `return state_data({'path.to.node': {key: value}})` — framework tracks it on `StepResult.env_data`
+- **Read**: `env._get_node('path.to.node').value` — read what a prior step wrote
+- **Scoped**: values on `vm.active.TPM:tpm0` don't interfere with `vm.active.TPM:tpm1`
+- **Graph-safe**: values don't affect node identity (hash/eq), so the dependency graph is unchanged
+
+See [examples/data-flow.md](examples/data-flow.md) for a complete VM provisioning example.
+
+## Step 8: Visualize the Graph
 
 See the dependency graph to understand what TestWeaver built:
 
@@ -192,6 +232,7 @@ testweaver graph my_test.yaml --format dot | dot -Tpng -o graph.png  # Image
 - [Examples](examples/) — detailed examples for every feature:
   - [Parameters](examples/parameters.md) — parameter graph and matrix
   - [Multi-Instance](examples/multi-instance.md) — multiple devices with independent states
+  - [Data Flow](examples/data-flow.md) — passing runtime data between operations
   - [Graph Modifiers](examples/graph-modifiers.md) — runtime execution control
   - [Filtering](examples/filtering.md) — run specific subsets of cases
   - [Reporting](examples/reporting.md) — JUnit XML, TAP, HTML output

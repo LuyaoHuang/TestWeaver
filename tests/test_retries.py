@@ -21,18 +21,18 @@ def _flaky_definition(fail_count=1):
     """Build a definition with a callable that fails `fail_count` times then passes."""
     call_counter = [0]
 
-    def flaky_action(params):
+    def flaky_action(params, env):
         call_counter[0] += 1
         if call_counter[0] <= fail_count:
             raise RuntimeError("transient failure")
 
     ops = [
-        Operation(name="setup", type="setup", provides=["ready"], callable=lambda p: None),
+        Operation(name="setup", type="setup", provides=["ready"], callable=lambda *a: None),
         Operation(name="action", type="action", requires=["ready"], provides=["done"],
                   callable=flaky_action),
-        Operation(name="check", type="check", requires=["done"], callable=lambda p: None),
+        Operation(name="check", type="check", requires=["done"], callable=lambda *a: None),
         Operation(name="teardown", type="cleanup", requires=["ready"],
-                  clears=["ready", "done"], callable=lambda p: None),
+                  clears=["ready", "done"], callable=lambda *a: None),
     ]
     return TestDefinition(
         operations=ops,
@@ -42,16 +42,16 @@ def _flaky_definition(fail_count=1):
 
 def _always_fail_definition():
     """Build a definition where the action always fails."""
-    def failing_action(params):
+    def failing_action(params, env):
         raise RuntimeError("permanent failure")
 
     ops = [
-        Operation(name="setup", type="setup", provides=["ready"], callable=lambda p: None),
+        Operation(name="setup", type="setup", provides=["ready"], callable=lambda *a: None),
         Operation(name="action", type="action", requires=["ready"], provides=["done"],
                   callable=failing_action),
-        Operation(name="check", type="check", requires=["done"], callable=lambda p: None),
+        Operation(name="check", type="check", requires=["done"], callable=lambda *a: None),
         Operation(name="teardown", type="cleanup", requires=["ready"],
-                  clears=["ready", "done"], callable=lambda p: None),
+                  clears=["ready", "done"], callable=lambda *a: None),
     ]
     return TestDefinition(
         operations=ops,
@@ -62,10 +62,10 @@ def _always_fail_definition():
 def _passing_definition():
     """Build a definition that always passes."""
     ops = [
-        Operation(name="setup", type="setup", provides=["ready"], callable=lambda p: None),
-        Operation(name="check", type="check", requires=["ready"], callable=lambda p: None),
+        Operation(name="setup", type="setup", provides=["ready"], callable=lambda *a: None),
+        Operation(name="check", type="check", requires=["ready"], callable=lambda *a: None),
         Operation(name="teardown", type="cleanup", requires=["ready"],
-                  clears=["ready"], callable=lambda p: None),
+                  clears=["ready"], callable=lambda *a: None),
     ]
     return TestDefinition(
         operations=ops,

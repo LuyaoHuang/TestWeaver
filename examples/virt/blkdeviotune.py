@@ -9,7 +9,7 @@ from testweaver import action, check, cleanup, provides, requires, excludes, cut
 @provides('vm.blkdeviotune.bytes_sec.total_bytes_sec')
 @excludes('vm.blkdeviotune.bytes_sec.read_bytes_sec',
           'vm.blkdeviotune.bytes_sec.write_bytes_sec')
-def set_total_bytes_sec(params):
+def set_total_bytes_sec(params, env):
     """Set total_bytes_sec."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('total_bytes_sec', 1048576)
@@ -18,7 +18,7 @@ def set_total_bytes_sec(params):
 
 @check
 @requires('vm.blkdeviotune.bytes_sec.total_bytes_sec')
-def check_total_bytes_sec(params):
+def check_total_bytes_sec(params, env):
     """Check total_bytes_sec."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep total_bytes_sec")
@@ -30,7 +30,7 @@ def check_total_bytes_sec(params):
 @provides('vm.blkdeviotune.bytes_sec.read_bytes_sec')
 @excludes('vm.blkdeviotune.bytes_sec.total_bytes_sec',
           'vm.blkdeviotune.bytes_sec.write_bytes_sec')
-def set_read_bytes_sec(params):
+def set_read_bytes_sec(params, env):
     """Set read_bytes_sec."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('read_bytes_sec', 524288)
@@ -39,7 +39,7 @@ def set_read_bytes_sec(params):
 
 @check
 @requires('vm.blkdeviotune.bytes_sec.read_bytes_sec')
-def check_read_bytes_sec(params):
+def check_read_bytes_sec(params, env):
     """Check read_bytes_sec."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep read_bytes_sec")
@@ -51,7 +51,7 @@ def check_read_bytes_sec(params):
 @provides('vm.blkdeviotune.bytes_sec.write_bytes_sec')
 @excludes('vm.blkdeviotune.bytes_sec.total_bytes_sec',
           'vm.blkdeviotune.bytes_sec.read_bytes_sec')
-def set_write_bytes_sec(params):
+def set_write_bytes_sec(params, env):
     """Set write_bytes_sec."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('write_bytes_sec', 524288)
@@ -60,7 +60,7 @@ def set_write_bytes_sec(params):
 
 @check
 @requires('vm.blkdeviotune.bytes_sec.write_bytes_sec')
-def check_write_bytes_sec(params):
+def check_write_bytes_sec(params, env):
     """Check write_bytes_sec."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep write_bytes_sec")
@@ -74,7 +74,7 @@ def check_write_bytes_sec(params):
 @provides('vm.blkdeviotune.iops_sec.total_iops_sec')
 @excludes('vm.blkdeviotune.iops_sec.read_iops_sec',
           'vm.blkdeviotune.iops_sec.write_iops_sec')
-def set_total_iops_sec(params):
+def set_total_iops_sec(params, env):
     """Set total_iops_sec."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('total_iops_sec', 1000)
@@ -83,7 +83,7 @@ def set_total_iops_sec(params):
 
 @check
 @requires('vm.blkdeviotune.iops_sec.total_iops_sec')
-def check_total_iops_sec(params):
+def check_total_iops_sec(params, env):
     """Check total_iops_sec."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep total_iops_sec")
@@ -95,7 +95,7 @@ def check_total_iops_sec(params):
 @provides('vm.blkdeviotune.iops_sec.read_iops_sec')
 @excludes('vm.blkdeviotune.iops_sec.total_iops_sec',
           'vm.blkdeviotune.iops_sec.write_iops_sec')
-def set_read_iops_sec(params):
+def set_read_iops_sec(params, env):
     """Set read_iops_sec."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('read_iops_sec', 500)
@@ -104,7 +104,7 @@ def set_read_iops_sec(params):
 
 @check
 @requires('vm.blkdeviotune.iops_sec.read_iops_sec')
-def check_read_iops_sec(params):
+def check_read_iops_sec(params, env):
     """Check read_iops_sec."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep read_iops_sec")
@@ -116,7 +116,7 @@ def check_read_iops_sec(params):
 @provides('vm.blkdeviotune.iops_sec.write_iops_sec')
 @excludes('vm.blkdeviotune.iops_sec.total_iops_sec',
           'vm.blkdeviotune.iops_sec.read_iops_sec')
-def set_write_iops_sec(params):
+def set_write_iops_sec(params, env):
     """Set write_iops_sec."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('write_iops_sec', 500)
@@ -125,7 +125,7 @@ def set_write_iops_sec(params):
 
 @check
 @requires('vm.blkdeviotune.iops_sec.write_iops_sec')
-def check_write_iops_sec(params):
+def check_write_iops_sec(params, env):
     """Check write_iops_sec."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep write_iops_sec")
@@ -139,7 +139,7 @@ def check_write_iops_sec(params):
 @provides('vm.blkdeviotune.bytes_sec_max.total_bytes_sec_max')
 @excludes('vm.blkdeviotune.bytes_sec_max.read_bytes_sec_max',
           'vm.blkdeviotune.bytes_sec_max.write_bytes_sec_max')
-def set_total_bytes_sec_max(params):
+def set_total_bytes_sec_max(params, env):
     """Set total_bytes_sec_max."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('total_bytes_sec_max', 2097152)
@@ -148,7 +148,7 @@ def set_total_bytes_sec_max(params):
 
 @check
 @requires('vm.blkdeviotune.bytes_sec_max.total_bytes_sec_max')
-def check_total_bytes_sec_max(params):
+def check_total_bytes_sec_max(params, env):
     """Check total_bytes_sec_max."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep total_bytes_sec_max")
@@ -160,7 +160,7 @@ def check_total_bytes_sec_max(params):
 @provides('vm.blkdeviotune.bytes_sec_max.read_bytes_sec_max')
 @excludes('vm.blkdeviotune.bytes_sec_max.total_bytes_sec_max',
           'vm.blkdeviotune.bytes_sec_max.write_bytes_sec_max')
-def set_read_bytes_sec_max(params):
+def set_read_bytes_sec_max(params, env):
     """Set read_bytes_sec_max."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('read_bytes_sec_max', 1048576)
@@ -169,7 +169,7 @@ def set_read_bytes_sec_max(params):
 
 @check
 @requires('vm.blkdeviotune.bytes_sec_max.read_bytes_sec_max')
-def check_read_bytes_sec_max(params):
+def check_read_bytes_sec_max(params, env):
     """Check read_bytes_sec_max."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep read_bytes_sec_max")
@@ -181,7 +181,7 @@ def check_read_bytes_sec_max(params):
 @provides('vm.blkdeviotune.bytes_sec_max.write_bytes_sec_max')
 @excludes('vm.blkdeviotune.bytes_sec_max.total_bytes_sec_max',
           'vm.blkdeviotune.bytes_sec_max.read_bytes_sec_max')
-def set_write_bytes_sec_max(params):
+def set_write_bytes_sec_max(params, env):
     """Set write_bytes_sec_max."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('write_bytes_sec_max', 1048576)
@@ -190,7 +190,7 @@ def set_write_bytes_sec_max(params):
 
 @check
 @requires('vm.blkdeviotune.bytes_sec_max.write_bytes_sec_max')
-def check_write_bytes_sec_max(params):
+def check_write_bytes_sec_max(params, env):
     """Check write_bytes_sec_max."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep write_bytes_sec_max")
@@ -204,7 +204,7 @@ def check_write_bytes_sec_max(params):
 @provides('vm.blkdeviotune.iops_sec_max.total_iops_sec_max')
 @excludes('vm.blkdeviotune.iops_sec_max.read_iops_sec_max',
           'vm.blkdeviotune.iops_sec_max.write_iops_sec_max')
-def set_total_iops_sec_max(params):
+def set_total_iops_sec_max(params, env):
     """Set total_iops_sec_max."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('total_iops_sec_max', 2000)
@@ -213,7 +213,7 @@ def set_total_iops_sec_max(params):
 
 @check
 @requires('vm.blkdeviotune.iops_sec_max.total_iops_sec_max')
-def check_total_iops_sec_max(params):
+def check_total_iops_sec_max(params, env):
     """Check total_iops_sec_max."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep total_iops_sec_max")
@@ -225,7 +225,7 @@ def check_total_iops_sec_max(params):
 @provides('vm.blkdeviotune.iops_sec_max.read_iops_sec_max')
 @excludes('vm.blkdeviotune.iops_sec_max.total_iops_sec_max',
           'vm.blkdeviotune.iops_sec_max.write_iops_sec_max')
-def set_read_iops_sec_max(params):
+def set_read_iops_sec_max(params, env):
     """Set read_iops_sec_max."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('read_iops_sec_max', 1000)
@@ -234,7 +234,7 @@ def set_read_iops_sec_max(params):
 
 @check
 @requires('vm.blkdeviotune.iops_sec_max.read_iops_sec_max')
-def check_read_iops_sec_max(params):
+def check_read_iops_sec_max(params, env):
     """Check read_iops_sec_max."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep read_iops_sec_max")
@@ -246,7 +246,7 @@ def check_read_iops_sec_max(params):
 @provides('vm.blkdeviotune.iops_sec_max.write_iops_sec_max')
 @excludes('vm.blkdeviotune.iops_sec_max.total_iops_sec_max',
           'vm.blkdeviotune.iops_sec_max.read_iops_sec_max')
-def set_write_iops_sec_max(params):
+def set_write_iops_sec_max(params, env):
     """Set write_iops_sec_max."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('write_iops_sec_max', 1000)
@@ -255,7 +255,7 @@ def set_write_iops_sec_max(params):
 
 @check
 @requires('vm.blkdeviotune.iops_sec_max.write_iops_sec_max')
-def check_write_iops_sec_max(params):
+def check_write_iops_sec_max(params, env):
     """Check write_iops_sec_max."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep write_iops_sec_max")
@@ -267,7 +267,7 @@ def check_write_iops_sec_max(params):
 @requires('vm.active', 'vm.config', 'vm.blkdeviotune.iops_sec')
 @excludes('vm.blkdeviotune.iops_sec.size_iops_sec')
 @provides('vm.blkdeviotune.iops_sec.size_iops_sec')
-def set_size_iops_sec(params):
+def set_size_iops_sec(params, env):
     """Set size_iops_sec."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('size_iops_sec', 512)
@@ -276,7 +276,7 @@ def set_size_iops_sec(params):
 
 @check
 @requires('vm.blkdeviotune.iops_sec.size_iops_sec')
-def check_size_iops_sec(params):
+def check_size_iops_sec(params, env):
     """Check size_iops_sec."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep size_iops_sec")
@@ -288,7 +288,7 @@ def check_size_iops_sec(params):
 @requires('vm.active', 'vm.config', 'vm.blkdeviotune')
 @excludes('vm.blkdeviotune.group_name')
 @provides('vm.blkdeviotune.group_name')
-def set_group_name(params):
+def set_group_name(params, env):
     """Set group_name."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('group_name', 'default-group')
@@ -297,7 +297,7 @@ def set_group_name(params):
 
 @check
 @requires('vm.blkdeviotune.group_name')
-def check_group_name(params):
+def check_group_name(params, env):
     """Check group_name."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep group_name")
@@ -311,7 +311,7 @@ def check_group_name(params):
 @provides('vm.blkdeviotune.bytes_sec_max_length.total_bytes_sec_max_length')
 @excludes('vm.blkdeviotune.bytes_sec_max_length.read_bytes_sec_max_length',
           'vm.blkdeviotune.bytes_sec_max_length.write_bytes_sec_max_length')
-def set_total_bytes_sec_max_length(params):
+def set_total_bytes_sec_max_length(params, env):
     """Set total_bytes_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('total_bytes_sec_max_length', 10)
@@ -320,7 +320,7 @@ def set_total_bytes_sec_max_length(params):
 
 @check
 @requires('vm.blkdeviotune.bytes_sec_max_length.total_bytes_sec_max_length')
-def check_total_bytes_sec_max_length(params):
+def check_total_bytes_sec_max_length(params, env):
     """Check total_bytes_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep total_bytes_sec_max_length")
@@ -332,7 +332,7 @@ def check_total_bytes_sec_max_length(params):
 @provides('vm.blkdeviotune.bytes_sec_max_length.read_bytes_sec_max_length')
 @excludes('vm.blkdeviotune.bytes_sec_max_length.total_bytes_sec_max_length',
           'vm.blkdeviotune.bytes_sec_max_length.write_bytes_sec_max_length')
-def set_read_bytes_sec_max_length(params):
+def set_read_bytes_sec_max_length(params, env):
     """Set read_bytes_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('read_bytes_sec_max_length', 10)
@@ -341,7 +341,7 @@ def set_read_bytes_sec_max_length(params):
 
 @check
 @requires('vm.blkdeviotune.bytes_sec_max_length.read_bytes_sec_max_length')
-def check_read_bytes_sec_max_length(params):
+def check_read_bytes_sec_max_length(params, env):
     """Check read_bytes_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep read_bytes_sec_max_length")
@@ -353,7 +353,7 @@ def check_read_bytes_sec_max_length(params):
 @provides('vm.blkdeviotune.bytes_sec_max_length.write_bytes_sec_max_length')
 @excludes('vm.blkdeviotune.bytes_sec_max_length.total_bytes_sec_max_length',
           'vm.blkdeviotune.bytes_sec_max_length.read_bytes_sec_max_length')
-def set_write_bytes_sec_max_length(params):
+def set_write_bytes_sec_max_length(params, env):
     """Set write_bytes_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('write_bytes_sec_max_length', 10)
@@ -362,7 +362,7 @@ def set_write_bytes_sec_max_length(params):
 
 @check
 @requires('vm.blkdeviotune.bytes_sec_max_length.write_bytes_sec_max_length')
-def check_write_bytes_sec_max_length(params):
+def check_write_bytes_sec_max_length(params, env):
     """Check write_bytes_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep write_bytes_sec_max_length")
@@ -376,7 +376,7 @@ def check_write_bytes_sec_max_length(params):
 @provides('vm.blkdeviotune.iops_sec_max_length.total_iops_sec_max_length')
 @excludes('vm.blkdeviotune.iops_sec_max_length.read_iops_sec_max_length',
           'vm.blkdeviotune.iops_sec_max_length.write_iops_sec_max_length')
-def set_total_iops_sec_max_length(params):
+def set_total_iops_sec_max_length(params, env):
     """Set total_iops_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('total_iops_sec_max_length', 10)
@@ -385,7 +385,7 @@ def set_total_iops_sec_max_length(params):
 
 @check
 @requires('vm.blkdeviotune.iops_sec_max_length.total_iops_sec_max_length')
-def check_total_iops_sec_max_length(params):
+def check_total_iops_sec_max_length(params, env):
     """Check total_iops_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep total_iops_sec_max_length")
@@ -397,7 +397,7 @@ def check_total_iops_sec_max_length(params):
 @provides('vm.blkdeviotune.iops_sec_max_length.read_iops_sec_max_length')
 @excludes('vm.blkdeviotune.iops_sec_max_length.total_iops_sec_max_length',
           'vm.blkdeviotune.iops_sec_max_length.write_iops_sec_max_length')
-def set_read_iops_sec_max_length(params):
+def set_read_iops_sec_max_length(params, env):
     """Set read_iops_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('read_iops_sec_max_length', 10)
@@ -406,7 +406,7 @@ def set_read_iops_sec_max_length(params):
 
 @check
 @requires('vm.blkdeviotune.iops_sec_max_length.read_iops_sec_max_length')
-def check_read_iops_sec_max_length(params):
+def check_read_iops_sec_max_length(params, env):
     """Check read_iops_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep read_iops_sec_max_length")
@@ -418,7 +418,7 @@ def check_read_iops_sec_max_length(params):
 @provides('vm.blkdeviotune.iops_sec_max_length.write_iops_sec_max_length')
 @excludes('vm.blkdeviotune.iops_sec_max_length.total_iops_sec_max_length',
           'vm.blkdeviotune.iops_sec_max_length.read_iops_sec_max_length')
-def set_write_iops_sec_max_length(params):
+def set_write_iops_sec_max_length(params, env):
     """Set write_iops_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     value = params.get('write_iops_sec_max_length', 10)
@@ -427,7 +427,7 @@ def set_write_iops_sec_max_length(params):
 
 @check
 @requires('vm.blkdeviotune.iops_sec_max_length.write_iops_sec_max_length')
-def check_write_iops_sec_max_length(params):
+def check_write_iops_sec_max_length(params, env):
     """Check write_iops_sec_max_length."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh blkdeviotune {guest} vda | grep write_iops_sec_max_length")
@@ -438,7 +438,7 @@ def check_write_iops_sec_max_length(params):
 @cleanup
 @requires('vm.blkdeviotune')
 @cut('vm.blkdeviotune')
-def clear_blkdeviotune(params):
+def clear_blkdeviotune(params, env):
     """Clear all blkdeviotune settings by restarting guest."""
     guest = params.get('guest_name', 'testvm')
     print(f"virsh destroy {guest}")

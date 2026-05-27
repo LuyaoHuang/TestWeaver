@@ -8,7 +8,7 @@ from testweaver import (
 @when_param('tpm_backend', 'emulator')
 @provides('swtpm_installed')
 @excludes('swtpm_installed')
-def install_swtpm(params):
+def install_swtpm(params, env):
     """Install swtpm packages."""
     print("yum install swtpm swtpm-tools -y")
 
@@ -17,7 +17,7 @@ def install_swtpm(params):
 @requires('swtpm_installed')
 @excludes('vm.config', 'vm.active')
 @cut('swtpm_installed')
-def uninstall_swtpm(params):
+def uninstall_swtpm(params, env):
     """Uninstall swtpm packages."""
     print("yum remove swtpm swtpm-tools -y")
 
@@ -26,7 +26,7 @@ def uninstall_swtpm(params):
 @when_param('tpm_backend', 'emulator')
 @provides('tpm_secret')
 @excludes('tpm_secret')
-def create_tpm_secret(params):
+def create_tpm_secret(params, env):
     """Create a TPM secret via virsh secret-define."""
     print("virsh secret-define --file /tmp/tpm_secret.xml")
     print("virsh secret-set-value <uuid> <value>")
@@ -36,7 +36,7 @@ def create_tpm_secret(params):
 @requires('tpm_secret')
 @excludes('vm.config.tpm', 'vm.active.tpm')
 @cut('tpm_secret')
-def undefine_tpm_secret(params):
+def undefine_tpm_secret(params, env):
     """Undefine the TPM secret."""
     print("virsh secret-undefine <uuid>")
 
@@ -46,7 +46,7 @@ def undefine_tpm_secret(params):
 @requires('vm.config', 'swtpm_installed')
 @excludes('vm.config.tpm')
 @provides('vm.config.tpm')
-def add_tpm_emulator(params):
+def add_tpm_emulator(params, env):
     """Add emulated TPM device to inactive guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     tpm_model = params.get('tpm_model', 'tpm-crb')
@@ -61,7 +61,7 @@ def add_tpm_emulator(params):
 @requires('vm.config')
 @excludes('vm.config.tpm')
 @provides('vm.config.tpm')
-def add_tpm_passthrough(params):
+def add_tpm_passthrough(params, env):
     """Add passthrough TPM device to inactive guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"# Adding passthrough TPM to {guest_name} XML")
@@ -73,7 +73,7 @@ def add_tpm_passthrough(params):
 @action
 @requires('vm.config.tpm')
 @cut('vm.config.tpm')
-def rm_tpm_in_inactive_xml(params):
+def rm_tpm_in_inactive_xml(params, env):
     """Remove TPM device from inactive guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"# Removing TPM from {guest_name} XML")
@@ -84,7 +84,7 @@ def rm_tpm_in_inactive_xml(params):
 
 @check
 @requires('vm.active.tpm')
-def verify_tpm_in_vm(params):
+def verify_tpm_in_vm(params, env):
     """Verify TPM device is visible inside guest."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"# Checking TPM in {guest_name}")
@@ -97,14 +97,14 @@ def verify_tpm_in_vm(params):
 @requires('vm.active.tpm')
 @provides('swtpm_state_file')
 @excludes('swtpm_state_file')
-def provide_swtpm_state_file(params):
+def provide_swtpm_state_file(params, env):
     """Verify swtpm state file exists after guest runs."""
     print("ls /var/lib/libvirt/swtpm/<domuuid>/tpm2/tpm2-00.permall")
 
 
 @check
 @requires('swtpm_state_file')
-def verify_swtpm_state_file(params):
+def verify_swtpm_state_file(params, env):
     """Verify swtpm state file is present."""
     print("test -f /var/lib/libvirt/swtpm/<domuuid>/tpm2/tpm2-00.permall")
 
@@ -113,6 +113,6 @@ def verify_swtpm_state_file(params):
 @requires('swtpm_state_file')
 @excludes('vm.active', 'vm.config')
 @cut('swtpm_state_file')
-def rm_swtpm_state_file(params):
+def rm_swtpm_state_file(params, env):
     """Remove swtpm state file."""
     print("rm -f /var/lib/libvirt/swtpm/<domuuid>/tpm2/tpm2-00.permall")

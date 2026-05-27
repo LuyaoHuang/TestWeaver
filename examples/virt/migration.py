@@ -6,7 +6,7 @@ from testweaver import action, check, provides, requires, clears, excludes
 @excludes('target_host.vm.active')
 @provides('target_host.vm.active')
 @clears('vm.active')
-def migrate(params):
+def migrate(params, env):
     """Live migrate a guest to target host."""
     guest_name = params.get('guest_name', 'testvm')
     target_host = params.get('target_host', 'remote-host')
@@ -15,7 +15,7 @@ def migrate(params):
 
 @check
 @requires('target_host.vm.active')
-def check_migrated_guest(params):
+def check_migrated_guest(params, env):
     """Verify guest is running on target host."""
     guest_name = params.get('guest_name', 'testvm')
     target_host = params.get('target_host', 'remote-host')

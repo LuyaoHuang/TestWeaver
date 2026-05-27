@@ -92,13 +92,13 @@ def test_parallel_faster_than_sequential():
 
 
 def test_parallel_with_callables():
-    def do_setup(params):
+    def do_setup(params, env):
         pass
 
-    def do_check(params):
+    def do_check(params, env):
         pass
 
-    def do_teardown(params):
+    def do_teardown(params, env):
         pass
 
     ops = [

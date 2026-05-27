@@ -9,7 +9,7 @@ from testweaver import (
 @when_param('rng_source_mode', 'server')
 @excludes('vm.active.rng', 'rng_source')
 @provides('rng_source')
-def create_rng_source_server(params):
+def create_rng_source_server(params, env):
     """Create a server as RNG source for EGD backend."""
     print("cat /dev/urandom | nc -k -l 1234 &")
 
@@ -20,7 +20,7 @@ def create_rng_source_server(params):
 @requires('vm.active.rng')
 @excludes('rng_source')
 @provides('rng_source')
-def create_rng_source_client(params):
+def create_rng_source_client(params, env):
     """Create a client as RNG source for EGD backend (bind mode)."""
     host = params.get('rng_host', '127.0.0.1')
     port = params.get('rng_port', '1234')
@@ -31,7 +31,7 @@ def create_rng_source_client(params):
 @requires('rng_source')
 @excludes('vm.active.rng')
 @clears('rng_source')
-def destroy_rng_source(params):
+def destroy_rng_source(params, env):
     """Destroy RNG source processes."""
     print("pkill -9 socat")
     print("pkill -9 nc")
@@ -42,7 +42,7 @@ def destroy_rng_source(params):
 @requires('vm.config')
 @excludes('vm.config.rng')
 @provides('vm.config.rng')
-def add_rng_in_inactive_vmxml(params):
+def add_rng_in_inactive_vmxml(params, env):
     """Add RNG device to inactive guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     rng_model = params.get('rng_model', 'virtio')
@@ -56,7 +56,7 @@ def add_rng_in_inactive_vmxml(params):
 @requires('vm.config')
 @requires('vm.config.rng')
 @clears('vm.config.rng')
-def rm_rng_in_inactive_vmxml(params):
+def rm_rng_in_inactive_vmxml(params, env):
     """Remove RNG device from inactive guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"# Removing RNG from {guest_name} XML")
@@ -69,7 +69,7 @@ def rm_rng_in_inactive_vmxml(params):
 @requires('vm.active')
 @excludes('vm.active.rng')
 @provides('vm.active.rng')
-def live_attach_rng_device(params):
+def live_attach_rng_device(params, env):
     """Hot-plug RNG device to running guest."""
     guest_name = params.get('guest_name', 'testvm')
     rng_model = params.get('rng_model', 'virtio')
@@ -80,7 +80,7 @@ def live_attach_rng_device(params):
 @action
 @requires('vm.active.rng')
 @clears('vm.active.rng')
-def live_detach_rng_device(params):
+def live_detach_rng_device(params, env):
     """Hot-unplug RNG device from running guest."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh detach-device {guest_name} /tmp/rng.xml --live")
@@ -90,7 +90,7 @@ def live_detach_rng_device(params):
 @requires('vm.config')
 @excludes('vm.config.rng')
 @provides('vm.config.rng')
-def cold_attach_rng_device(params):
+def cold_attach_rng_device(params, env):
     """Cold-plug RNG device to inactive guest."""
     guest_name = params.get('guest_name', 'testvm')
     rng_model = params.get('rng_model', 'virtio')
@@ -101,7 +101,7 @@ def cold_attach_rng_device(params):
 @action
 @requires('vm.config.rng')
 @clears('vm.config.rng')
-def cold_detach_rng_device(params):
+def cold_detach_rng_device(params, env):
     """Cold-unplug RNG device from inactive guest."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh detach-device {guest_name} /tmp/rng.xml --config")
@@ -109,7 +109,7 @@ def cold_detach_rng_device(params):
 
 @check
 @requires('vm.active.rng')
-def verify_rng_in_vm(params):
+def verify_rng_in_vm(params, env):
     """Verify RNG device is functional inside guest."""
     print("ssh guest 'dd if=/dev/hwrng of=/dev/null count=100'")
 
@@ -117,7 +117,7 @@ def verify_rng_in_vm(params):
 @check
 @requires('vm.active')
 @excludes('vm.active.rng')
-def verify_no_rng_in_vm(params):
+def verify_no_rng_in_vm(params, env):
     """Verify no RNG device exists inside guest."""
     print("ssh guest 'dd if=/dev/hwrng of=/dev/null count=1'")
     print("# Expected: No such device")
@@ -127,7 +127,7 @@ def verify_no_rng_in_vm(params):
 @requires('rng_source')
 @excludes('vm.active', 'vm.config')
 @cut('rng_source')
-def cleanup_rng_source(params):
+def cleanup_rng_source(params, env):
     """Clean up RNG source processes."""
     print("pkill -9 socat")
     print("pkill -9 nc")

@@ -18,6 +18,7 @@ from testweaver.decorators import (
     requires,
     setup,
     skip_when,
+    state_data,
     suite_setup,
     suite_teardown,
     timeout,
@@ -27,4 +28,5 @@ from testweaver.decorators import (
 )
 from testweaver.filtering import filter_cases
 from testweaver.modifiers import EdgeGuard, TransientHook, TransitionObserver
+from testweaver.schema import StateData
 from testweaver.sorting import sort_cases

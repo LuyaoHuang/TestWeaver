@@ -5,7 +5,7 @@ from testweaver import action, check, provides, requires, excludes
 @requires('vm.config.numa')
 @excludes('vm.config.maxmemory')
 @provides('vm.config.maxmemory')
-def set_maxmemory(params):
+def set_maxmemory(params, env):
     """Set maxMemory in guest XML for memory hotplug."""
     guest_name = params.get('guest_name', 'testvm')
     max_mem = params.get('max_memory', 4194304)
@@ -19,7 +19,7 @@ def set_maxmemory(params):
 @requires('vm.config.maxmemory')
 @excludes('vm.config.memdevice')
 @provides('vm.config.memdevice')
-def set_memory_device(params):
+def set_memory_device(params, env):
     """Add memory device to inactive guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     mem_size = params.get('mem_device_size', 524288)
@@ -31,7 +31,7 @@ def set_memory_device(params):
 @requires('vm.active.maxmemory')
 @excludes('vm.active.memdevice')
 @provides('vm.active.memdevice')
-def attach_mem_device(params):
+def attach_mem_device(params, env):
     """Live-attach a memory device to running guest."""
     guest_name = params.get('guest_name', 'testvm')
     mem_size = params.get('mem_device_size', 524288)
@@ -41,7 +41,7 @@ def attach_mem_device(params):
 
 @check
 @requires('vm.active.memdevice')
-def check_mem_device_audit(params):
+def check_mem_device_audit(params, env):
     """Verify memory device hotplug via audit log."""
     print("ausearch -m VIRT_RESOURCE | grep memory")
     print("ssh guest 'lsmem'")

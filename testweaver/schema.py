@@ -28,6 +28,17 @@ class GraftDef(BaseModel):
     tgt: str
 
 
+class StateData(BaseModel):
+    """Runtime data returned by an operation callable, keyed by state path.
+
+    The engine attaches each entry to the corresponding ``Env`` node
+    after the operation executes successfully.  Values are preserved
+    across state transitions but do not affect graph node identity.
+    """
+
+    values: dict[str, Any] = Field(default_factory=dict)
+
+
 class ParamChoice(BaseModel):
     """Named set of parameter values for combinatorial test generation."""
 
@@ -295,6 +306,7 @@ class StepResult(BaseModel):
     injected: bool = False
     verify_result: ObserverResult | None = None
     observer_results: list[ObserverResult] = Field(default_factory=list)
+    env_data: dict[str, Any] | None = None
 
 
 class AttemptResult(BaseModel):

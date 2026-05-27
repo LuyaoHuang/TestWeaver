@@ -5,7 +5,7 @@ from testweaver import action, check, cleanup, provides, requires, excludes, cut
 @requires('vm.active')
 @excludes('vm.schedinfo.cpu_shares')
 @provides('vm.schedinfo.cpu_shares')
-def set_cpu_shares(params):
+def set_cpu_shares(params, env):
     """Set CPU shares via schedinfo."""
     guest_name = params.get('guest_name', 'testvm')
     value = params.get('cpu_shares', 1024)
@@ -14,7 +14,7 @@ def set_cpu_shares(params):
 
 @check
 @requires('vm.schedinfo.cpu_shares')
-def check_cpu_shares(params):
+def check_cpu_shares(params, env):
     """Verify CPU shares setting."""
     guest_name = params.get('guest_name', 'testvm')
     value = params.get('cpu_shares', 1024)
@@ -26,7 +26,7 @@ def check_cpu_shares(params):
 @requires('vm.active')
 @excludes('vm.schedinfo.vcpu_period')
 @provides('vm.schedinfo.vcpu_period')
-def set_vcpu_period(params):
+def set_vcpu_period(params, env):
     """Set vCPU period via schedinfo."""
     guest_name = params.get('guest_name', 'testvm')
     value = params.get('vcpu_period', 100000)
@@ -35,7 +35,7 @@ def set_vcpu_period(params):
 
 @check
 @requires('vm.schedinfo.vcpu_period')
-def check_vcpu_period(params):
+def check_vcpu_period(params, env):
     """Verify vCPU period setting."""
     guest_name = params.get('guest_name', 'testvm')
     value = params.get('vcpu_period', 100000)
@@ -47,7 +47,7 @@ def check_vcpu_period(params):
 @requires('vm.active')
 @excludes('vm.schedinfo.vcpu_quota')
 @provides('vm.schedinfo.vcpu_quota')
-def set_vcpu_quota(params):
+def set_vcpu_quota(params, env):
     """Set vCPU quota via schedinfo."""
     guest_name = params.get('guest_name', 'testvm')
     value = params.get('vcpu_quota', -1)
@@ -56,7 +56,7 @@ def set_vcpu_quota(params):
 
 @check
 @requires('vm.schedinfo.vcpu_quota')
-def check_vcpu_quota(params):
+def check_vcpu_quota(params, env):
     """Verify vCPU quota setting."""
     guest_name = params.get('guest_name', 'testvm')
     value = params.get('vcpu_quota', -1)
@@ -67,7 +67,7 @@ def check_vcpu_quota(params):
 @cleanup
 @requires('vm.schedinfo')
 @cut('vm.schedinfo')
-def clear_schedinfo(params):
+def clear_schedinfo(params, env):
     """Clear all schedinfo settings by restarting guest."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh destroy {guest_name}")

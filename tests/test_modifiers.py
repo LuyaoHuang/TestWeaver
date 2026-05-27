@@ -61,26 +61,29 @@ def test_transition_observer_creation():
 # ---------------------------------------------------------------------------
 
 def test_run_step_shell_returns_no_modifier():
+    from testweaver.env import Env
     op = Operation(name="echo", type="action", provides=["x"], run="echo ok")
-    result, modifier = run_step(op, {})
+    result, modifier = run_step(op, {}, Env())
     assert result.status == "pass"
     assert modifier is None
 
 
 def test_run_step_callable_no_return():
+    from testweaver.env import Env
     op = Operation(name="noop", type="action", provides=["x"],
-                   callable=lambda p: None)
-    result, modifier = run_step(op, {})
+                   callable=lambda *a: None)
+    result, modifier = run_step(op, {}, Env())
     assert result.status == "pass"
     assert modifier is None
 
 
 def test_run_step_callable_returns_edge_guard():
-    def my_op(params):
+    from testweaver.env import Env
+    def my_op(params, env):
         return EdgeGuard(blocked_op="bad_step", reason="blocked")
 
     op = Operation(name="setup", type="action", provides=["x"], callable=my_op)
-    result, modifier = run_step(op, {})
+    result, modifier = run_step(op, {}, Env())
     assert result.status == "pass"
     assert isinstance(modifier, EdgeGuard)
     assert modifier.blocked_op == "bad_step"
@@ -88,39 +91,43 @@ def test_run_step_callable_returns_edge_guard():
 
 
 def test_run_step_callable_returns_transient_hook():
-    def my_op(params):
+    from testweaver.env import Env
+    def my_op(params, env):
         return TransientHook(before_op="next", action=lambda p: None, name="hook1")
 
     op = Operation(name="setup", type="action", provides=["x"], callable=my_op)
-    result, modifier = run_step(op, {})
+    result, modifier = run_step(op, {}, Env())
     assert isinstance(modifier, TransientHook)
     assert result.modifier_type == "transient_hook"
 
 
 def test_run_step_callable_returns_observer():
-    def my_op(params):
+    from testweaver.env import Env
+    def my_op(params, env):
         return TransitionObserver(watch_ops=["a"], verify=lambda p: None, name="obs1")
 
     op = Operation(name="setup", type="action", provides=["x"], callable=my_op)
-    result, modifier = run_step(op, {})
+    result, modifier = run_step(op, {}, Env())
     assert isinstance(modifier, TransitionObserver)
     assert result.modifier_type == "transition_observer"
 
 
 def test_run_step_callable_non_modifier_return_ignored():
+    from testweaver.env import Env
     op = Operation(name="setup", type="action", provides=["x"],
-                   callable=lambda p: "some string")
-    result, modifier = run_step(op, {})
+                   callable=lambda *a: "some string")
+    result, modifier = run_step(op, {}, Env())
     assert result.status == "pass"
     assert modifier is None
 
 
 def test_run_step_callable_failure_no_modifier():
-    def fail_op(params):
+    from testweaver.env import Env
+    def fail_op(params, env):
         raise RuntimeError("boom")
 
     op = Operation(name="fail", type="action", provides=["x"], callable=fail_op)
-    result, modifier = run_step(op, {})
+    result, modifier = run_step(op, {}, Env())
     assert result.status == "fail"
     assert modifier is None
 
@@ -132,11 +139,11 @@ def test_run_step_callable_failure_no_modifier():
 def test_run_case_no_modifiers_works():
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="check", type="check", requires=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="teardown", type="cleanup", requires=["ready"],
-                  clears=["ready"], callable=lambda p: None),
+                  clears=["ready"], callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"])
     cases = generate_cases(defn)
@@ -157,7 +164,7 @@ def test_edge_guard_triggers_replan():
     ops = [
         Operation(name="config_bad", type="action", provides=["configured"],
                   excludes=["configured"],
-                  callable=lambda p: EdgeGuard(blocked_op="path_a", reason="bad config")),
+                  callable=lambda *a: EdgeGuard(blocked_op="path_a", reason="bad config")),
         Operation(name="path_a", type="action", provides=["ready"],
                   requires=["configured"], excludes=["ready"]),
         Operation(name="path_b", type="action", provides=["ready"],
@@ -193,7 +200,7 @@ def test_edge_guard_no_graph_errors():
     """EdgeGuard without a graph causes error status."""
     ops = [
         Operation(name="config", type="action", provides=["configured"],
-                  callable=lambda p: EdgeGuard(blocked_op="use_it")),
+                  callable=lambda *a: EdgeGuard(blocked_op="use_it")),
         Operation(name="use_it", type="action", provides=["ready"],
                   requires=["configured"]),
         Operation(name="check", type="check", requires=["ready"]),
@@ -215,7 +222,7 @@ def test_edge_guard_no_alternative_path():
     """EdgeGuard blocks the only path; replan fails."""
     ops = [
         Operation(name="config", type="action", provides=["configured"],
-                  callable=lambda p: EdgeGuard(blocked_op="only_path")),
+                  callable=lambda *a: EdgeGuard(blocked_op="only_path")),
         Operation(name="only_path", type="action", provides=["ready"],
                   requires=["configured"]),
         Operation(name="check", type="check", requires=["ready"]),
@@ -240,7 +247,7 @@ def test_transient_hook_fires_before_target():
     """Hook fires before the named operation."""
     hook_log = []
 
-    def step1(params):
+    def step1(params, env):
         return TransientHook(
             before_op="step2",
             action=lambda p: hook_log.append("hook_fired"),
@@ -251,9 +258,9 @@ def test_transient_hook_fires_before_target():
     ops = [
         Operation(name="step1", type="action", provides=["a"], callable=step1),
         Operation(name="step2", type="action", provides=["b"], requires=["a"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="check", type="check", requires=["b"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(case_id="t1", steps=["step1", "step2", "check"], target="check")
@@ -274,7 +281,7 @@ def test_transient_hook_fires_once():
     """Hook is removed after first match; second match doesn't fire."""
     count = []
 
-    def step1(params):
+    def step1(params, env):
         return TransientHook(
             before_op="repeatable",
             action=lambda p: count.append(1),
@@ -284,9 +291,9 @@ def test_transient_hook_fires_once():
     ops = [
         Operation(name="step1", type="action", provides=["a"], callable=step1),
         Operation(name="repeatable", type="action", provides=["b"],
-                  requires=["a"], callable=lambda p: None),
+                  requires=["a"], callable=lambda *a: None),
         Operation(name="check", type="check", requires=["b"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(case_id="t1", steps=["step1", "repeatable", "check"],
@@ -301,17 +308,17 @@ def test_transient_hook_failure_aborts_case():
     def bad_hook(params):
         raise RuntimeError("hook failed")
 
-    def step1(params):
+    def step1(params, env):
         return TransientHook(before_op="step2", action=bad_hook, name="bad_hook")
 
     ops = [
         Operation(name="step1", type="action", provides=["a"], callable=step1),
         Operation(name="step2", type="action", provides=["b"], requires=["a"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="check", type="check", requires=["b"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="cleanup", type="cleanup", requires=["a"], clears=["a"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"])
     case = TestCase(case_id="t1", steps=["step1", "step2", "check"],
@@ -331,7 +338,7 @@ def test_transient_hook_no_match_doesnt_fire():
     """Hook targeting a non-existent step just never fires."""
     count = []
 
-    def step1(params):
+    def step1(params, env):
         return TransientHook(
             before_op="nonexistent",
             action=lambda p: count.append(1),
@@ -340,7 +347,7 @@ def test_transient_hook_no_match_doesnt_fire():
     ops = [
         Operation(name="step1", type="action", provides=["a"], callable=step1),
         Operation(name="check", type="check", requires=["a"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(case_id="t1", steps=["step1", "check"], target="check")
@@ -357,7 +364,7 @@ def test_observer_runs_after_watched_ops():
     """Observer verify is called after each watched operation."""
     verify_log = []
 
-    def setup_observer(params):
+    def setup_observer(params, env):
         return TransitionObserver(
             watch_ops=["step2", "step3"],
             verify=lambda p: verify_log.append("verified"),
@@ -368,11 +375,11 @@ def test_observer_runs_after_watched_ops():
         Operation(name="step1", type="action", provides=["a"],
                   callable=setup_observer),
         Operation(name="step2", type="action", provides=["b"],
-                  requires=["a"], callable=lambda p: None),
+                  requires=["a"], callable=lambda *a: None),
         Operation(name="step3", type="action", provides=["c"],
-                  requires=["b"], callable=lambda p: None),
+                  requires=["b"], callable=lambda *a: None),
         Operation(name="check", type="check", requires=["c"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(case_id="t1", steps=["step1", "step2", "step3", "check"],
@@ -396,7 +403,7 @@ def test_observer_failure_fails_case():
     def fail_verify(params):
         raise AssertionError("audit check failed")
 
-    def setup_observer(params):
+    def setup_observer(params, env):
         return TransitionObserver(
             watch_ops=["step2"],
             verify=fail_verify,
@@ -407,11 +414,11 @@ def test_observer_failure_fails_case():
         Operation(name="step1", type="action", provides=["a"],
                   callable=setup_observer),
         Operation(name="step2", type="action", provides=["b"],
-                  requires=["a"], callable=lambda p: None),
+                  requires=["a"], callable=lambda *a: None),
         Operation(name="check", type="check", requires=["b"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="cleanup", type="cleanup", requires=["a"], clears=["a"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"])
     case = TestCase(case_id="t1", steps=["step1", "step2", "check"],
@@ -428,7 +435,7 @@ def test_observer_not_triggered_by_unwatched_ops():
     """Observer only fires for ops in watch_ops list."""
     verify_log = []
 
-    def setup_observer(params):
+    def setup_observer(params, env):
         return TransitionObserver(
             watch_ops=["step3"],
             verify=lambda p: verify_log.append("verified"),
@@ -439,11 +446,11 @@ def test_observer_not_triggered_by_unwatched_ops():
         Operation(name="step1", type="action", provides=["a"],
                   callable=setup_observer),
         Operation(name="step2", type="action", provides=["b"],
-                  requires=["a"], callable=lambda p: None),
+                  requires=["a"], callable=lambda *a: None),
         Operation(name="step3", type="action", provides=["c"],
-                  requires=["b"], callable=lambda p: None),
+                  requires=["b"], callable=lambda *a: None),
         Operation(name="check", type="check", requires=["c"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(case_id="t1", steps=["step1", "step2", "step3", "check"],
@@ -464,17 +471,17 @@ def test_multiple_modifier_types_together():
     hook_log = []
     obs_log = []
 
-    def config_step(params):
+    def config_step(params, env):
         return EdgeGuard(blocked_op="bad_path", reason="avoid this")
 
-    def memtune_step(params):
+    def memtune_step(params, env):
         return TransientHook(
             before_op="check",
             action=lambda p: hook_log.append("hooked"),
             name="pre_check_hook",
         )
 
-    def attach_step(params):
+    def attach_step(params, env):
         return TransitionObserver(
             watch_ops=["check"],
             verify=lambda p: obs_log.append("observed"),
@@ -489,7 +496,7 @@ def test_multiple_modifier_types_together():
         Operation(name="attach", type="action", provides=["attached"],
                   requires=["tuned"], callable=attach_step),
         Operation(name="check", type="check", requires=["attached"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     case = TestCase(
@@ -514,9 +521,9 @@ def test_multiple_modifier_types_together():
 def test_run_all_passes_graph():
     ops = [
         Operation(name="setup", type="action", provides=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="check", type="check", requires=["ready"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
     ]
     defn = _make_definition(ops, ["check"], cleanup=False)
     graph = build_graph(ops)
@@ -535,13 +542,13 @@ def test_cleanup_runs_after_edge_guard_error():
 
     ops = [
         Operation(name="config", type="action", provides=["configured"],
-                  callable=lambda p: EdgeGuard(blocked_op="only_way")),
+                  callable=lambda *a: EdgeGuard(blocked_op="only_way")),
         Operation(name="only_way", type="action", provides=["ready"],
                   requires=["configured"]),
         Operation(name="check", type="check", requires=["ready"]),
         Operation(name="clean", type="cleanup", requires=["configured"],
                   clears=["configured"],
-                  callable=lambda p: cleanup_log.append("cleaned")),
+                  callable=lambda *a: cleanup_log.append("cleaned")),
     ]
     defn = _make_definition(ops, ["check"])
     case = TestCase(

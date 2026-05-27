@@ -5,5 +5,5 @@ suite:
   name: "Hello World (Python modules)"
   description: "Same as hello_world.yaml but operations defined in Python with decorators"
   targets:
-    - check_content
+    - check_file_exists
   cleanup: true

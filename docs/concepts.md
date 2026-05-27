@@ -68,7 +68,7 @@ vm
 @requires('vm.config')
 @excludes('vm.active')
 @graft('vm.config', 'vm.active')
-def start_guest(params):
+def start_guest(params, env):
     print(f"virsh start {params.get('guest_name')}")
 ```
 
@@ -78,9 +78,62 @@ def start_guest(params):
 @action
 @requires('vm.active')
 @cut('vm.active')
-def destroy_guest(params):
+def destroy_guest(params, env):
     print(f"virsh destroy {params.get('guest_name')}")
 ```
+
+## Runtime Data Flow
+
+Operation callables receive `env` as their second argument — the current `Env` tree. They can attach arbitrary data to state nodes, and downstream operations can read it. Values live on the tree but do **not** participate in graph node identity (hash/eq), so they don't affect test case generation.
+
+**Write data** — return a :class:`StateData` from the callable.  The engine
+applies the values to ``Env`` nodes and records them on ``StepResult.env_data``
+for framework-level tracking:
+
+```python
+from testweaver import state_data
+
+@action
+@provides('vm.active')
+@excludes('vm.active')
+def provision_vm(params, env):
+    vm_uuid = allocate_vm()  # dynamic, only known at runtime
+    return state_data({'vm.active': {'uuid': vm_uuid, 'ip': '10.0.0.42'}})
+```
+
+**Read data** — use ``env._get_node(path).value`` in any operation that ``requires`` that state:
+
+```python
+@action
+@requires('vm.active')
+def configure_vm(params, env):
+    node = env._get_node('vm.active')
+    vm_ip = node.value['ip']      # read what provision_vm wrote
+    ssh(vm_ip, 'install-package.sh')
+```
+
+Callables may also write side-effect-style via ``env.set_value(path, value)``.
+The two patterns coexist — ``StateData`` returns are preferred when the framework
+should track what data was bound to which state path.
+
+**Why not params?** Dynamic data written to `params` would pollute the global namespace for all subsequent steps and cause collisions with multi-instance tests (e.g., two TPMs would overwrite each other's UUID). Env node values are scoped to their state path — `vm.active.TPM:tpm0.init` and `vm.active.TPM:tpm1.init` each hold independent values.
+
+**Multi-instance isolation** — values are naturally isolated by the state tree hierarchy:
+
+```python
+@action
+@provides('vm.active.TPM:tpm0.init')
+def attach_tpm0(params, env):
+    env.set_value('vm.active.TPM:tpm0.init', {'uuid': 'tpm-uuid-0'})
+
+@action
+@provides('vm.active.TPM:tpm1.init')
+@requires('vm.active.TPM:tpm0.init')
+def attach_tpm1(params, env):
+    env.set_value('vm.active.TPM:tpm1.init', {'uuid': 'tpm-uuid-1'})
+```
+
+See [examples/data-flow.md](examples/data-flow.md) for a full worked example.
 
 ## Dependency Graph
 
@@ -97,17 +150,17 @@ When multiple operations provide the same state, TestWeaver generates a test cas
 ```python
 @action
 @provides('ready')
-def setup_a(params):
+def setup_a(params, env):
     pass
 
 @action
 @provides('ready')
-def setup_b(params):
+def setup_b(params, env):
     pass
 
 @check
 @requires('ready')
-def verify(params):
+def verify(params, env):
     pass
 ```
 

@@ -4,7 +4,7 @@ from testweaver import action, check, provides, requires, excludes
 @action
 @excludes('hugepage_config')
 @provides('hugepage_config')
-def host_hugepage_config(params):
+def host_hugepage_config(params, env):
     """Configure hugepages on host."""
     pagesize = params.get('pagesize', '2048')
     print(f"echo {pagesize} > /proc/sys/vm/nr_hugepages")
@@ -15,7 +15,7 @@ def host_hugepage_config(params):
 @requires('vm.config', 'hugepage_config')
 @excludes('vm.config.hugepage')
 @provides('vm.config.hugepage')
-def guest_hugepage_settings(params):
+def guest_hugepage_settings(params, env):
     """Set hugepage XML element in guest config."""
     guest_name = params.get('guest_name', 'testvm')
     pagesize = params.get('pagesize', '2048')
@@ -27,7 +27,7 @@ def guest_hugepage_settings(params):
 
 @check
 @requires('hugepage_config', 'vm.active.hugepage')
-def check_hugepage_cmdline(params):
+def check_hugepage_cmdline(params, env):
     """Check hugepage in QEMU command line."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"ps aux | grep {guest_name} | grep hugepage")
@@ -37,7 +37,7 @@ def check_hugepage_cmdline(params):
 @requires('vm.config')
 @excludes('vm.config.mlock')
 @provides('vm.config.mlock')
-def set_mem_lock_xml(params):
+def set_mem_lock_xml(params, env):
     """Set memory lock in guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"# Setting <memoryBacking><locked/></memoryBacking> for {guest_name}")
@@ -48,7 +48,7 @@ def set_mem_lock_xml(params):
 
 @check
 @requires('vm.active.mlock')
-def verify_mem_lock(params):
+def verify_mem_lock(params, env):
     """Verify memory lock is active."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"ps aux | grep {guest_name} | grep mlock")
@@ -59,7 +59,7 @@ def verify_mem_lock(params):
 @requires('vm.config')
 @excludes('vm.config.nosharepage')
 @provides('vm.config.nosharepage')
-def set_nosharepage_xml(params):
+def set_nosharepage_xml(params, env):
     """Set nosharepage in guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"# Setting <memoryBacking><nosharepages/></memoryBacking> for {guest_name}")
@@ -70,7 +70,7 @@ def set_nosharepage_xml(params):
 
 @check
 @requires('vm.active.nosharepage')
-def verify_nosharepage(params):
+def verify_nosharepage(params, env):
     """Verify nosharepage is active."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"ps aux | grep {guest_name} | grep nosharepage")
@@ -80,7 +80,7 @@ def verify_nosharepage(params):
 @requires('vm.active')
 @excludes('vm.active.memtune')
 @provides('vm.active.memtune')
-def virsh_memtune(params):
+def virsh_memtune(params, env):
     """Set memtune on running guest."""
     guest_name = params.get('guest_name', 'testvm')
     memtune = params.get('memtune', '1048576')
@@ -91,7 +91,7 @@ def virsh_memtune(params):
 @requires('vm.config')
 @excludes('vm.config.memtune')
 @provides('vm.config.memtune')
-def virsh_memtune_conf(params):
+def virsh_memtune_conf(params, env):
     """Set memtune on inactive guest config."""
     guest_name = params.get('guest_name', 'testvm')
     memtune = params.get('memtune', '1048576')
@@ -100,7 +100,7 @@ def virsh_memtune_conf(params):
 
 @check
 @requires('vm.active.memtune')
-def verify_memtune_cgroup(params):
+def verify_memtune_cgroup(params, env):
     """Verify memtune setting in cgroup."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"# Check cgroup memory limit for {guest_name}")
@@ -109,7 +109,7 @@ def verify_memtune_cgroup(params):
 
 @check
 @requires('vm.active.memtune')
-def verify_memtune_xml(params):
+def verify_memtune_xml(params, env):
     """Verify memtune setting in guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh memtune {guest_name}")
@@ -119,7 +119,7 @@ def verify_memtune_xml(params):
 @requires('vm.config')
 @excludes('vm.config.memballoon')
 @provides('vm.config.memballoon')
-def set_memballoon_xml(params):
+def set_memballoon_xml(params, env):
     """Set memballoon model in guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     memballoon = params.get('memballoon', 'virtio')
@@ -133,7 +133,7 @@ def set_memballoon_xml(params):
 @requires('vm.active')
 @excludes('vm.active.curmem')
 @provides('vm.active.curmem')
-def hot_set_guest_mem(params):
+def hot_set_guest_mem(params, env):
     """Hot-set guest current memory."""
     guest_name = params.get('guest_name', 'testvm')
     curmem = params.get('curmem', '524288')
@@ -144,7 +144,7 @@ def hot_set_guest_mem(params):
 @requires('vm.config')
 @excludes('vm.config.curmem')
 @provides('vm.config.curmem')
-def cold_set_guest_mem(params):
+def cold_set_guest_mem(params, env):
     """Cold-set guest current memory."""
     guest_name = params.get('guest_name', 'testvm')
     curmem = params.get('curmem', '524288')
@@ -153,7 +153,7 @@ def cold_set_guest_mem(params):
 
 @check
 @requires('vm.active.curmem')
-def verify_setmem_in_guest(params):
+def verify_setmem_in_guest(params, env):
     """Verify memory size inside guest."""
     print("ssh guest 'free -m'")
     print("ssh guest 'cat /proc/meminfo | grep MemTotal'")
@@ -163,7 +163,7 @@ def verify_setmem_in_guest(params):
 @requires('vm.config')
 @excludes('vm.config.mem_period')
 @provides('vm.config.mem_period')
-def virsh_set_period_conf(params):
+def virsh_set_period_conf(params, env):
     """Set memory stats period on inactive guest."""
     guest_name = params.get('guest_name', 'testvm')
     mem_period = params.get('mem_period', '10')
@@ -174,7 +174,7 @@ def virsh_set_period_conf(params):
 @requires('vm.active')
 @excludes('vm.active.mem_period')
 @provides('vm.active.mem_period')
-def virsh_set_period(params):
+def virsh_set_period(params, env):
     """Set memory stats period on running guest."""
     guest_name = params.get('guest_name', 'testvm')
     mem_period = params.get('mem_period', '10')
@@ -183,7 +183,7 @@ def virsh_set_period(params):
 
 @check
 @requires('vm.active')
-def virsh_dommemstat(params):
+def virsh_dommemstat(params, env):
     """Check guest memory statistics."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh dommemstat {guest_name}")
@@ -191,7 +191,7 @@ def virsh_dommemstat(params):
 
 @check
 @requires('vm.active.mem_period')
-def check_period_in_xml(params):
+def check_period_in_xml(params, env):
     """Verify memory period in guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh dumpxml {guest_name} | grep period")

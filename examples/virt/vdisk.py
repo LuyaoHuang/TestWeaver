@@ -5,7 +5,7 @@ from testweaver import action, check, provides, requires, excludes
 @requires('vm.config')
 @excludes('vm.config.vdisk')
 @provides('vm.config.vdisk')
-def add_disk(params):
+def add_disk(params, env):
     """Add a virtual disk to inactive guest."""
     guest_name = params.get('guest_name', 'testvm')
     disk_path = params.get('disk_path', '/var/lib/libvirt/images/test.qcow2')
@@ -15,6 +15,6 @@ def add_disk(params):
 
 @check
 @requires('vm.active.vdisk')
-def check_disk(params):
+def check_disk(params, env):
     """Verify virtual disk is visible inside guest."""
     print("ssh guest 'lsblk | grep vdb'")

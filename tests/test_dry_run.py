@@ -239,11 +239,11 @@ class TestDryRunCallable:
     def test_callable_shown(self):
         ops = [
             Operation(name="setup", type="setup", provides=["ready"],
-                      callable=lambda p: None),
+                      callable=lambda *a: None),
             Operation(name="check", type="check", requires=["ready"],
-                      callable=lambda p: None),
+                      callable=lambda *a: None),
             Operation(name="teardown", type="cleanup", requires=["ready"],
-                      clears=["ready"], callable=lambda p: None),
+                      clears=["ready"], callable=lambda *a: None),
         ]
         defn = TestDefinition(
             operations=ops,

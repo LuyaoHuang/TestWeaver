@@ -6,16 +6,16 @@ Define test operations in Python with decorators instead of YAML:
 
     @action
     @provides('file.exists')
-    def create_file(params):
+    def create_file(params, env):
         subprocess.run('echo hello > /tmp/test.txt', shell=True, check=True)
 
     @verify_for('create_file')
-    def check_content(params):
+    def check_content(params, env):
         subprocess.run('grep -q hello /tmp/test.txt', shell=True, check=True)
 
     @check
     @requires('file.exists')
-    def verify_file(params):
+    def verify_file(params, env):
         subprocess.run('test -f /tmp/test.txt', shell=True, check=True)
 """
 from __future__ import annotations
@@ -215,3 +215,30 @@ def fault_for(operation_name: str, *, terminal: bool = True) -> Callable:
         meta['terminal'] = terminal
         return func
     return decorator
+
+
+def state_data(*args: Any, **kwargs: Any) -> Any:
+    """Create a :class:`StateData` object to return from an operation callable.
+
+    The engine applies the values to ``Env`` nodes and records them on
+    the ``StepResult`` for framework-level tracking.  Two conventions:
+
+    **Explicit path mapping** (single dict)::
+
+        return state_data({'vm.active': {'uuid': 'abc'}})
+
+    **Keyword convenience** — auto-mapped to the operation's single
+    ``provides`` path::
+
+        # @provides('vm.active')
+        return state_data(uuid='abc', ip='10.0.0.1')
+    """
+    from .schema import StateData
+
+    if args and isinstance(args[0], dict):
+        return StateData(values=args[0])
+    if kwargs:
+        return StateData(values=kwargs)
+    raise TypeError(
+        "state_data() requires either a dict argument or keyword arguments"
+    )

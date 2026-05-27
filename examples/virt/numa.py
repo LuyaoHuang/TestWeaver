@@ -5,7 +5,7 @@ from testweaver import action, provides, requires, excludes
 @requires('vm.config')
 @excludes('vm.config.numa')
 @provides('vm.config.numa')
-def set_guest_numa(params):
+def set_guest_numa(params, env):
     """Set NUMA topology in guest XML."""
     guest_name = params.get('guest_name', 'testvm')
     numa_nodes = params.get('numa_nodes', 2)

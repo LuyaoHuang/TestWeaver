@@ -8,7 +8,7 @@ from testweaver import (
 @requires('vm.active')
 @excludes('vm.active.DISK:{disk_id}.attached')
 @provides('vm.active.DISK:{disk_id}.attached')
-def attach_disk(params):
+def attach_disk(params, env):
     """Hot-plug a virtual disk to a running guest."""
     guest_name = params.get('guest_name', 'testvm')
     disk_id = params['disk_id']
@@ -18,7 +18,7 @@ def attach_disk(params):
 
 
 @verify_for('attach_disk')
-def verify_disk_attached(params):
+def verify_disk_attached(params, env):
     """Verify disk is visible inside guest after attach."""
     disk_id = params['disk_id']
     print(f"ssh guest 'lsblk | grep {disk_id}'")
@@ -28,7 +28,7 @@ def verify_disk_attached(params):
 @requires('vm.active.DISK:{disk_id}.attached')
 @excludes('vm.active.DISK:{disk_id}.formatted')
 @provides('vm.active.DISK:{disk_id}.formatted')
-def format_disk(params):
+def format_disk(params, env):
     """Format the attached disk with ext4."""
     disk_id = params['disk_id']
     print(f"ssh guest 'mkfs.ext4 /dev/{disk_id}'")
@@ -38,7 +38,7 @@ def format_disk(params):
 @requires('vm.active.DISK:{disk_id}.formatted')
 @excludes('vm.active.DISK:{disk_id}.mounted')
 @provides('vm.active.DISK:{disk_id}.mounted')
-def mount_disk(params):
+def mount_disk(params, env):
     """Mount the formatted disk."""
     disk_id = params['disk_id']
     print(f"ssh guest 'mkdir -p /mnt/{disk_id} && mount /dev/{disk_id} /mnt/{disk_id}'")
@@ -47,7 +47,7 @@ def mount_disk(params):
 @action
 @requires('vm.active.DISK:{disk_id}.mounted')
 @clears('vm.active.DISK:{disk_id}.mounted')
-def unmount_disk(params):
+def unmount_disk(params, env):
     """Unmount the disk."""
     disk_id = params['disk_id']
     print(f"ssh guest 'umount /mnt/{disk_id}'")
@@ -56,7 +56,7 @@ def unmount_disk(params):
 @cleanup
 @requires('vm.active.DISK:{disk_id}.attached')
 @clears('vm.active.DISK:{disk_id}.attached')
-def detach_disk(params):
+def detach_disk(params, env):
     """Hot-unplug a virtual disk from a running guest."""
     guest_name = params.get('guest_name', 'testvm')
     disk_id = params['disk_id']
@@ -65,13 +65,13 @@ def detach_disk(params):
 
 @check
 @requires('vm.active.DISK:vd*.attached')
-def check_any_disk_attached(params):
+def check_any_disk_attached(params, env):
     """Verify at least one disk is attached — uses wildcard."""
     print("ssh guest 'lsblk --output NAME,SIZE,TYPE | grep disk'")
 
 
 @check
 @requires('vm.active.DISK:vd*.mounted')
-def check_any_disk_mounted(params):
+def check_any_disk_mounted(params, env):
     """Verify at least one disk is mounted — uses wildcard."""
     print("ssh guest 'mount | grep /mnt/vd'")

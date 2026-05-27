@@ -29,7 +29,7 @@ from testweaver import (
 @action
 @provides('vm.config')
 @excludes('vm.config')
-def define_vm(params):
+def define_vm(params, env):
     """Define a VM from XML."""
     print(f"  virsh define {params.get('guest_name', 'testvm')}.xml")
 
@@ -38,7 +38,7 @@ def define_vm(params):
 @requires('vm.config')
 @excludes('vm.config.hugepage')
 @provides('vm.config.hugepage')
-def configure_hugepages(params):
+def configure_hugepages(params, env):
     """Add hugepage backing to the VM config."""
     print(f"  virt-xml {params.get('guest_name', 'testvm')} --edit --memorybacking hugepages=on")
 
@@ -47,7 +47,7 @@ def configure_hugepages(params):
 @requires('vm.config')
 @excludes('vm.config.tpm')
 @provides('vm.config.tpm')
-def add_tpm_device(params):
+def add_tpm_device(params, env):
     """Add a TPM 2.0 device to the VM config."""
     print(f"  virt-xml {params.get('guest_name', 'testvm')} --add-device --tpm model=tpm-crb")
 
@@ -56,7 +56,7 @@ def add_tpm_device(params):
 @requires('vm.config')
 @excludes('vm.active')
 @provides('vm.active')
-def start_vm(params):
+def start_vm(params, env):
     """Start the VM."""
     print(f"  virsh start {params.get('guest_name', 'testvm')}")
 
@@ -69,7 +69,7 @@ def start_vm(params):
 
 @fault_for('start_vm')
 @requires('vm.config.hugepage')
-def hugepage_start_error(params):
+def hugepage_start_error(params, env):
     """Start should fail when hugepages are configured but unavailable."""
     print(f"  virsh start {params.get('guest_name', 'testvm')}")
     print("  >> error: internal error: hugepages are disabled by administrator")
@@ -77,7 +77,7 @@ def hugepage_start_error(params):
 
 @fault_for('start_vm')
 @requires('vm.config.tpm')
-def tpm_start_error(params):
+def tpm_start_error(params, env):
     """Start should fail when TPM is configured but swtpm is not installed."""
     print(f"  virsh start {params.get('guest_name', 'testvm')}")
     print("  >> error: swtpm binary not found in PATH")
@@ -87,7 +87,7 @@ def tpm_start_error(params):
 
 @check
 @requires('vm.active')
-def check_vm_running(params):
+def check_vm_running(params, env):
     """Verify the VM is running."""
     print(f"  virsh domstate {params.get('guest_name', 'testvm')} | grep running")
 
@@ -97,7 +97,7 @@ def check_vm_running(params):
 @cleanup
 @requires('vm.active')
 @clears('vm.active')
-def destroy_vm(params):
+def destroy_vm(params, env):
     """Stop the VM."""
     print(f"  virsh destroy {params.get('guest_name', 'testvm')}")
 
@@ -106,7 +106,7 @@ def destroy_vm(params):
 @requires('vm.config.hugepage')
 @excludes('vm.active')
 @clears('vm.config.hugepage')
-def remove_hugepages(params):
+def remove_hugepages(params, env):
     """Remove hugepage config."""
     print(f"  virt-xml {params.get('guest_name', 'testvm')} --edit --memorybacking hugepages=off")
 
@@ -115,7 +115,7 @@ def remove_hugepages(params):
 @requires('vm.config.tpm')
 @excludes('vm.active')
 @clears('vm.config.tpm')
-def remove_tpm(params):
+def remove_tpm(params, env):
     """Remove TPM device."""
     print(f"  virt-xml {params.get('guest_name', 'testvm')} --remove-device --tpm all")
 
@@ -124,6 +124,6 @@ def remove_tpm(params):
 @requires('vm.config')
 @excludes('vm.active', 'vm.config.hugepage', 'vm.config.tpm')
 @clears('vm.config')
-def undefine_vm(params):
+def undefine_vm(params, env):
     """Undefine the VM."""
     print(f"  virsh undefine {params.get('guest_name', 'testvm')}")

@@ -5,7 +5,7 @@ from testweaver import action, check, provides, requires, excludes, cut
 @requires('vm.active', 'vm.config')
 @excludes('vm.with_snapshots')
 @provides('vm.with_snapshots')
-def create_snapshot(params):
+def create_snapshot(params, env):
     """Create a disk snapshot."""
     guest_name = params.get('guest_name', 'testvm')
     snap_name = params.get('snapshot_name', 'snap1')
@@ -15,7 +15,7 @@ def create_snapshot(params):
 @check
 @requires('vm.with_snapshots')
 @excludes('vm.with_snapshots.block_pulled', 'vm.with_snapshots.block_committed')
-def check_snapshots(params):
+def check_snapshots(params, env):
     """Verify snapshots exist in the backing chain."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh snapshot-list {guest_name}")
@@ -26,7 +26,7 @@ def check_snapshots(params):
 @requires('vm.active', 'vm.config', 'vm.with_snapshots')
 @excludes('vm.with_snapshots.block_pulled', 'vm.with_snapshots.block_committed')
 @provides('vm.with_snapshots.block_pulled')
-def block_pull_snapshots(params):
+def block_pull_snapshots(params, env):
     """Block-pull to flatten the backing chain."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh blockpull {guest_name} vda --wait")
@@ -36,7 +36,7 @@ def block_pull_snapshots(params):
 @requires('vm.active', 'vm.config', 'vm.with_snapshots')
 @excludes('vm.with_snapshots.block_pulled', 'vm.with_snapshots.block_committed')
 @provides('vm.with_snapshots.block_committed')
-def block_commit_snapshots(params):
+def block_commit_snapshots(params, env):
     """Block-commit to merge snapshot layers."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh blockcommit {guest_name} vda --active --wait --pivot")
@@ -45,7 +45,7 @@ def block_commit_snapshots(params):
 @action
 @requires('vm.active', 'vm.config', 'vm.with_snapshots')
 @cut('vm.with_snapshots')
-def delete_snapshots(params):
+def delete_snapshots(params, env):
     """Delete all snapshots and restore original disk."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh snapshot-list {guest_name} --name | xargs -I {{}} virsh snapshot-delete {guest_name} {{}} --metadata")

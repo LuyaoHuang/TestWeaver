@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 from fnmatch import fnmatch
+from typing import Any
 
 
 class Env:
@@ -21,12 +22,13 @@ class Env:
         children: Named child nodes forming the state subtree.
     """
 
-    __slots__ = ('data', 'children')
+    __slots__ = ('data', 'children', 'value')
 
-    def __init__(self, data: bool = False, children: dict[str, Env] | None = None):
+    def __init__(self, data: bool = False, children: dict[str, Env] | None = None, value: Any = None):
         """Initialize an environment node."""
         self.data = data
         self.children = children if children is not None else {}
+        self.value = value
 
     def _get_node(self, path: str, create: bool = False) -> Env | None:
         """Traverse to the node at a dot-separated path, optionally creating intermediates."""
@@ -109,6 +111,7 @@ class Env:
         if node is not None:
             node.data = False
             node.children = {}
+            node.value = None
 
     def graft(self, src: str, tgt: str) -> None:
         """Deep-copy the subtree at *src* onto *tgt*.
@@ -124,6 +127,20 @@ class Env:
         tgt_node = self._get_node(tgt, create=True)
         tgt_node.data = src_copy.data if src_copy.data else True
         tgt_node.children = src_copy.children
+        tgt_node.value = src_copy.value
+
+    def set_value(self, path: str, value: Any) -> None:
+        """Attach a runtime value to the node at the given path.
+
+        The value does not affect graph node identity (hash/eq).
+        Intermediate nodes are created as needed.
+
+        Args:
+            path: Dot-separated state path.
+            value: Arbitrary data to attach to the node.
+        """
+        node = self._get_node(path, create=True)
+        node.value = value
 
     def copy(self) -> Env:
         """Return a deep copy of this environment."""

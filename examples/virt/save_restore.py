@@ -5,7 +5,7 @@ from testweaver import action, check, provides, requires, excludes, graft, cut
 @requires('vm.active', 'vm.config')
 @graft('vm.active', 'vm.managedsaved')
 @cut('vm.active')
-def managedsave_guest(params):
+def managedsave_guest(params, env):
     """Managed-save a running guest."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh managedsave {guest_name}")
@@ -17,7 +17,7 @@ def managedsave_guest(params):
 @graft('vm.managedsaved', 'vm.active')
 @cut('vm.managedsaved')
 @provides('vm.active.restored', 'vm.active.restored.from_managedsaved')
-def restore_from_managedsaved(params):
+def restore_from_managedsaved(params, env):
     """Restore a guest from managed save."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh start {guest_name}")
@@ -27,7 +27,7 @@ def restore_from_managedsaved(params):
 @requires('vm.active')
 @graft('vm.active', 'vm.saved')
 @cut('vm.active')
-def save_guest(params):
+def save_guest(params, env):
     """Save a running guest to file."""
     guest_name = params.get('guest_name', 'testvm')
     save_path = params.get('save_path', '/tmp/guest.save')
@@ -40,7 +40,7 @@ def save_guest(params):
 @graft('vm.saved', 'vm.active')
 @cut('vm.saved')
 @provides('vm.active.restored', 'vm.active.restored.from_saved')
-def restore_from_saved(params):
+def restore_from_saved(params, env):
     """Restore a guest from save file."""
     save_path = params.get('save_path', '/tmp/guest.save')
     print(f"virsh restore {save_path}")
@@ -48,7 +48,7 @@ def restore_from_saved(params):
 
 @check
 @requires('vm.managedsaved')
-def check_managedsaved_guest(params):
+def check_managedsaved_guest(params, env):
     """Check guest is in managed-saved state."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh domstate {guest_name} --reason")
@@ -57,7 +57,7 @@ def check_managedsaved_guest(params):
 
 @check
 @requires('vm.saved')
-def check_saved_guest(params):
+def check_saved_guest(params, env):
     """Check guest is in saved state."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh domstate {guest_name} --reason")
@@ -66,7 +66,7 @@ def check_saved_guest(params):
 
 @check
 @requires('vm.active.restored')
-def check_restored_guest(params):
+def check_restored_guest(params, env):
     """Check guest is in restored state."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"virsh domstate {guest_name} --reason")
@@ -75,7 +75,7 @@ def check_restored_guest(params):
 
 @check
 @requires('vm.managedsaved')
-def check_managedsaved_file(params):
+def check_managedsaved_file(params, env):
     """Check managed save file exists."""
     guest_name = params.get('guest_name', 'testvm')
     print(f"test -f /var/lib/libvirt/qemu/save/{guest_name}.save")

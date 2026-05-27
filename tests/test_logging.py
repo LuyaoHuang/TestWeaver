@@ -3,6 +3,7 @@ import logging
 from click.testing import CliRunner
 
 from testweaver.cli import main
+from testweaver.env import Env
 from testweaver.engine import run_all, run_step
 from testweaver.graph import build_graph, generate_cases
 from testweaver.schema import (
@@ -87,7 +88,7 @@ def test_run_step_logs(caplog):
     op = Operation(name="my_op", type="action", provides=["x"], run="true")
 
     with caplog.at_level(logging.INFO, logger="testweaver"):
-        result, _ = run_step(op, {}, timeout=10)
+        result, _ = run_step(op, {}, Env(), timeout=10)
 
     assert result.status == "pass"
     assert "Step started: my_op" in caplog.text
@@ -99,7 +100,7 @@ def test_debug_shows_command_details(caplog):
     op = Operation(name="cmd_op", type="action", provides=["x"], run="echo hello")
 
     with caplog.at_level(logging.DEBUG, logger="testweaver"):
-        run_step(op, {}, timeout=10)
+        run_step(op, {}, Env(), timeout=10)
 
     assert "Executing command:" in caplog.text
     assert "echo hello" in caplog.text

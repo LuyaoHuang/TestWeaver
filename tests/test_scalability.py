@@ -19,15 +19,15 @@ def _wide_graph_ops(n_alternatives=10):
         ops.append(Operation(
             name=f"setup_{i}", type="action",
             provides=["ready"], excludes=["ready"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ))
     ops.append(Operation(
         name="check", type="check", requires=["ready"],
-        callable=lambda p: None,
+        callable=lambda *a: None,
     ))
     ops.append(Operation(
         name="teardown", type="cleanup", requires=["ready"],
-        clears=["ready"], callable=lambda p: None,
+        clears=["ready"], callable=lambda *a: None,
     ))
     return ops
 
@@ -40,15 +40,15 @@ def _deep_chain_ops(depth=10):
         ops.append(Operation(
             name=f"step_{i}", type="action" if i > 0 else "setup",
             requires=req, provides=[f"s{i + 1}"],
-            callable=lambda p: None,
+            callable=lambda *a: None,
         ))
     ops.append(Operation(
         name="check", type="check", requires=[f"s{depth}"],
-        callable=lambda p: None,
+        callable=lambda *a: None,
     ))
     ops.append(Operation(
         name="cleanup", type="cleanup", requires=["s1"],
-        clears=["s1"], callable=lambda p: None,
+        clears=["s1"], callable=lambda *a: None,
     ))
     return ops
 
@@ -57,21 +57,21 @@ def _branching_ops():
     """Create operations that produce many graph nodes via state combinations."""
     ops = [
         Operation(name="set_a", type="setup", provides=["a"], excludes=["a"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="set_b", type="action", provides=["b"], excludes=["b"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="set_c", type="action", provides=["c"], excludes=["c"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="set_d", type="action", provides=["d"], excludes=["d"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="set_e", type="action", provides=["e"], excludes=["e"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="set_f", type="action", provides=["f"], excludes=["f"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="check", type="check", requires=["a", "b", "c", "d"],
-                  callable=lambda p: None),
+                  callable=lambda *a: None),
         Operation(name="cleanup_a", type="cleanup", requires=["a"],
-                  clears=["a"], callable=lambda p: None),
+                  clears=["a"], callable=lambda *a: None),
     ]
     return ops
 

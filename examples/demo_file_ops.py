@@ -14,7 +14,7 @@ from testweaver import action, check, cleanup, provides, requires, excludes, cle
 @action
 @provides('file.exists')
 @excludes('file.exists')
-def create_file_with_echo(params):
+def create_file_with_echo(params, env):
     """Create file using shell echo."""
     file_path = params.get('file_path', '/tmp/tw_test.txt')
     os.system(f'echo "Created by echo" > {file_path}')
@@ -23,7 +23,7 @@ def create_file_with_echo(params):
 @action
 @provides('file.exists')
 @excludes('file.exists')
-def create_file_with_python(params):
+def create_file_with_python(params, env):
     """Create file using Python open()."""
     file_path = params.get('file_path', '/tmp/tw_test.txt')
     with open(file_path, 'w') as f:
@@ -33,7 +33,7 @@ def create_file_with_python(params):
 @action
 @provides('file.exists')
 @excludes('file.exists')
-def create_file_with_touch(params):
+def create_file_with_touch(params, env):
     """Create file using touch command."""
     file_path = params.get('file_path', '/tmp/tw_test.txt')
     os.system(f'touch {file_path}')
@@ -43,7 +43,7 @@ def create_file_with_touch(params):
 
 @check
 @requires('file.exists')
-def test_read_file(params):
+def test_read_file(params, env):
     """Verify we can read the file."""
     file_path = params.get('file_path', '/tmp/tw_test.txt')
     with open(file_path, 'r') as f:
@@ -54,7 +54,7 @@ def test_read_file(params):
 @cleanup
 @requires('file.exists')
 @clears('file.exists')
-def remove_file(params):
+def remove_file(params, env):
     """Remove the test file."""
     file_path = params.get('file_path', '/tmp/tw_test.txt')
     os.remove(file_path)
