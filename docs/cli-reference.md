@@ -21,7 +21,7 @@ testweaver <command> [options]
 Check a definition file for errors.
 
 ```bash
-testweaver validate <file> [-v] [--debug]
+testweaver validate <file> [-v] [--debug] [--trace]
 ```
 
 ## generate
@@ -49,6 +49,7 @@ testweaver generate <file> [options]
 | `--max-state-depth N` | | Max active states per node (default: 0 = no limit) |
 | `-v` | `--verbose` | INFO-level logging |
 | `--debug` | | DEBUG-level logging |
+| `--trace` | | TRACE-level logging (very verbose) |
 
 ## run
 
@@ -83,6 +84,7 @@ testweaver run <file> [options]
 | `--max-state-depth N` | | Max active states per node |
 | `-v` | `--verbose` | INFO-level logging |
 | `--debug` | | DEBUG-level logging |
+| `--trace` | | TRACE-level logging (very verbose) |
 | `--log-file path` | | Write logs to a file |
 
 ## graph
@@ -99,6 +101,7 @@ testweaver graph <file> [options]
 | `-o file` | `--output` | Write output to file |
 | `-v` | `--verbose` | INFO-level logging |
 | `--debug` | | DEBUG-level logging |
+| `--trace` | | TRACE-level logging (very verbose) |
 
 ```bash
 # Render graph as PNG
@@ -161,7 +164,9 @@ See [examples/prioritization.md](examples/prioritization.md) for details.
 ```bash
 testweaver run my_test.yaml -v                               # INFO level
 testweaver run my_test.yaml --debug                          # DEBUG level
+testweaver run my_test.yaml --trace                          # TRACE level (state transitions)
 testweaver run my_test.yaml -v --log-file run.log            # Log to file
+TESTWEAVER_LOG=DEBUG testweaver run my_test.yaml             # Enable via env var
 ```
 
 See [examples/logging.md](examples/logging.md) for details.

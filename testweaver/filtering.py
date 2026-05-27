@@ -3,7 +3,10 @@ from __future__ import annotations
 from fnmatch import fnmatch
 from typing import Any
 
+from .log import get_logger
 from .schema import TestCase
+
+logger = get_logger(__name__)
 
 
 def filter_cases(
@@ -40,6 +43,11 @@ def filter_cases(
     if fault_only and no_fault:
         raise ValueError("fault_only and no_fault are mutually exclusive")
 
+    logger.debug(
+        "Filtering %d case(s): ids=%s targets=%s steps=%s fault_only=%s no_fault=%s params=%s",
+        len(cases), ids, targets, steps, fault_only, no_fault, params,
+    )
+
     result: list[TestCase] = []
     for case in cases:
         if fault_only and not case.is_fault:
@@ -66,4 +74,5 @@ def filter_cases(
                 continue
 
         result.append(case)
+    logger.debug("Filtered: %d/%d case(s) matched", len(result), len(cases))
     return result

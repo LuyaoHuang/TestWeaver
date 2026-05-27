@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import logging
 import re
 from itertools import combinations, product
 from typing import Any
 
 import networkx as nx
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 from .env import Env
 from .errors import UnreachableTargetError

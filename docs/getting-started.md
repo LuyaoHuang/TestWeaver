@@ -235,4 +235,5 @@ testweaver graph my_test.yaml --format dot | dot -Tpng -o graph.png  # Image
   - [Data Flow](examples/data-flow.md) — passing runtime data between operations
   - [Graph Modifiers](examples/graph-modifiers.md) — runtime execution control
   - [Filtering](examples/filtering.md) — run specific subsets of cases
+  - [Logging](examples/logging.md) — debug and trace execution with `--trace` and `TESTWEAVER_LOG`
   - [Reporting](examples/reporting.md) — JUnit XML, TAP, HTML output

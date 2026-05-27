@@ -6,7 +6,10 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from xml.dom import minidom
 
+from .log import get_logger
 from .schema import AttemptResult, CaseResult, RunSummary
+
+logger = get_logger(__name__)
 
 
 def to_junit_xml(
@@ -14,6 +17,7 @@ def to_junit_xml(
     summary: RunSummary,
     suite_name: str = "TestWeaver",
 ) -> str:
+    logger.debug("Generating JUnit XML report: %d results", len(results))
     testsuites = ET.Element("testsuites")
     testsuite = ET.SubElement(testsuites, "testsuite")
     testsuite.set("name", suite_name)
@@ -98,6 +102,7 @@ def to_junit_xml(
 
 
 def to_tap(results: list[CaseResult], summary: RunSummary) -> str:
+    logger.debug("Generating TAP report: %d results", len(results))
     lines: list[str] = [
         "TAP version 13",
         f"1..{summary.total}",
@@ -253,6 +258,7 @@ def _build_step_html(r: CaseResult) -> str:
 
 
 def to_html(results: list[CaseResult], summary: RunSummary) -> str:
+    logger.debug("Generating HTML report: %d results", len(results))
     rows: list[str] = []
     for r in results:
         fault_badge = '<span class="badge fault">FAULT</span>' if r.is_fault else ""

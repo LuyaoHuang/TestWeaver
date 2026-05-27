@@ -29,37 +29,26 @@ from .schema import (
 def _configure_logging(
     verbose: bool = False,
     debug: bool = False,
+    trace: bool = False,
     log_file: str | None = None,
     workers: int = 1,
 ) -> None:
     """Set up logging for the testweaver package."""
-    if debug:
+    from .log import TRACE, _env_level, configure
+
+    env_level = _env_level()
+    if env_level is not None:
+        level: int | str = env_level
+    elif trace:
+        level = TRACE
+    elif debug:
         level = logging.DEBUG
     elif verbose:
         level = logging.INFO
     else:
         level = logging.WARNING
 
-    tw_logger = logging.getLogger("testweaver")
-    tw_logger.setLevel(level)
-
-    if tw_logger.handlers:
-        return
-
-    if workers > 1:
-        fmt = "%(asctime)s %(levelname)-5s [%(name)s] [%(threadName)s] %(message)s"
-    else:
-        fmt = "%(asctime)s %(levelname)-5s [%(name)s] %(message)s"
-    formatter = logging.Formatter(fmt)
-
-    stderr_handler = logging.StreamHandler(sys.stderr)
-    stderr_handler.setFormatter(formatter)
-    tw_logger.addHandler(stderr_handler)
-
-    if log_file:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(formatter)
-        tw_logger.addHandler(file_handler)
+    configure(level=level, log_file=log_file, workers=workers)
 
 
 def _parse_param_overrides(params: tuple[str, ...]) -> dict[str, str]:
@@ -141,9 +130,10 @@ def main() -> None:
 @click.argument("path", type=click.Path(exists=True))
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Show INFO-level logs")
 @click.option("--debug", is_flag=True, default=False, help="Show DEBUG-level logs")
-def validate(path: str, verbose: bool, debug: bool) -> None:
+@click.option("--trace", is_flag=True, default=False, help="Show TRACE-level logs (very verbose)")
+def validate(path: str, verbose: bool, debug: bool, trace: bool) -> None:
     """Validate a test definition file."""
-    _configure_logging(verbose=verbose, debug=debug)
+    _configure_logging(verbose=verbose, debug=debug, trace=trace)
     try:
         definition = load_definition(path)
         click.echo(json.dumps({
@@ -175,6 +165,7 @@ def validate(path: str, verbose: bool, debug: bool) -> None:
               help="Exclude fault-injection cases")
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Show INFO-level logs")
 @click.option("--debug", is_flag=True, default=False, help="Show DEBUG-level logs")
+@click.option("--trace", is_flag=True, default=False, help="Show TRACE-level logs (very verbose)")
 @click.option("--max-graph-nodes", type=int, default=None,
               help="Override max graph nodes (default: 500)")
 @click.option("--max-path-depth", type=int, default=None,
@@ -189,12 +180,12 @@ def validate(path: str, verbose: bool, debug: bool) -> None:
 def generate(path: str, fmt: str, param: tuple[str, ...],
              filters: tuple[str, ...], filter_targets: tuple[str, ...],
              filter_steps: tuple[str, ...], fault_only: bool,
-             no_fault: bool, verbose: bool, debug: bool,
+             no_fault: bool, verbose: bool, debug: bool, trace: bool,
              max_graph_nodes: int | None, max_path_depth: int | None,
              max_state_depth: int | None,
              sort_strategy: str | None, sort_seed: int | None) -> None:
     """Generate test cases from a definition file."""
-    _configure_logging(verbose=verbose, debug=debug)
+    _configure_logging(verbose=verbose, debug=debug, trace=trace)
     definition = load_definition(path)
     if max_graph_nodes is not None:
         definition.suite.max_graph_nodes = max_graph_nodes
@@ -301,6 +292,8 @@ def _run_with_progress(
               help="Show INFO-level execution logs on stderr")
 @click.option("--debug", is_flag=True, default=False,
               help="Show DEBUG-level execution logs on stderr")
+@click.option("--trace", is_flag=True, default=False,
+              help="Show TRACE-level execution logs (very verbose)")
 @click.option("--log-file", type=click.Path(), default=None,
               help="Also write logs to this file")
 @click.option("--dry-run", is_flag=True, default=False,
@@ -322,13 +315,13 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
         workers: int, retries: int, retry_delay: float,
         filters: tuple[str, ...], filter_targets: tuple[str, ...],
         filter_steps: tuple[str, ...], fault_only: bool, no_fault: bool,
-        verbose: bool, debug: bool, log_file: str | None, dry_run: bool,
+        verbose: bool, debug: bool, trace: bool, log_file: str | None, dry_run: bool,
         max_graph_nodes: int | None, max_path_depth: int | None,
         max_state_depth: int | None,
         sort_strategy: str | None, sort_seed: int | None,
         progress: bool | None) -> None:
     """Run test cases from a definition file."""
-    _configure_logging(verbose=verbose, debug=debug, log_file=log_file, workers=workers)
+    _configure_logging(verbose=verbose, debug=debug, trace=trace, log_file=log_file, workers=workers)
     definition = load_definition(path)
     if max_graph_nodes is not None:
         definition.suite.max_graph_nodes = max_graph_nodes
@@ -369,7 +362,7 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
     show_progress = progress
     if show_progress is None:
         show_progress = sys.stderr.isatty()
-    if verbose or debug:
+    if verbose or debug or trace:
         show_progress = False
 
     worker_info = f" with {workers} worker(s)" if workers != 1 else ""
@@ -463,9 +456,10 @@ def analyze(path: str, definition: str | None) -> None:
 @click.option("--output", "-o", type=click.Path(), help="Save output to file")
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Show INFO-level logs")
 @click.option("--debug", is_flag=True, default=False, help="Show DEBUG-level logs")
-def show_graph(path: str, fmt: str, output: str | None, verbose: bool, debug: bool) -> None:
+@click.option("--trace", is_flag=True, default=False, help="Show TRACE-level logs (very verbose)")
+def show_graph(path: str, fmt: str, output: str | None, verbose: bool, debug: bool, trace: bool) -> None:
     """Show the dependency graph for a definition file."""
-    _configure_logging(verbose=verbose, debug=debug)
+    _configure_logging(verbose=verbose, debug=debug, trace=trace)
     definition = load_definition(path)
 
     if fmt in ("dot", "mermaid"):

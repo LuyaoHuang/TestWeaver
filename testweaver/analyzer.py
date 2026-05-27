@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+from .log import get_logger
 from .schema import (
     CaseResult,
     DebugSuggestion,
@@ -10,6 +11,8 @@ from .schema import (
     Operation,
     RunSummary,
 )
+
+logger = get_logger(__name__)
 
 
 def summarize_run(
@@ -24,6 +27,7 @@ def summarize_run(
     Returns:
         Aggregated counts, timing, failure patterns, and slowest steps.
     """
+    logger.debug("Summarizing %d result(s)", len(results))
     total = len(results)
     passed = sum(1 for r in results if r.status == "pass")
     failed = sum(1 for r in results if r.status == "fail")
@@ -81,6 +85,8 @@ def find_failures(
     ops_by_name = {op.name: op for op in operations} if operations else {}
     failures = []
 
+    logger.debug("Finding failures in %d result(s)", len(results))
+
     for r in results:
         if r.status == "pass":
             continue
@@ -116,6 +122,8 @@ def suggest_debug(
     """
     ops_by_name = {op.name: op for op in operations}
     failed_op = ops_by_name.get(failure.failed_step)
+
+    logger.debug("Generating debug suggestion for failed step: %s", failure.failed_step)
 
     if not failed_op:
         return DebugSuggestion(
@@ -156,9 +164,11 @@ def suggest_debug(
         likely_cause = "Unknown failure"
         message = f"Operation '{failed_op.name}' failed without clear error output."
 
-    return DebugSuggestion(
+    suggestion = DebugSuggestion(
         failure=failure,
         likely_cause=likely_cause,
         suggested_operations=providers,
         message=message,
     )
+    logger.info("Debug suggestion: cause=%s providers=%s", likely_cause, providers)
+    return suggestion

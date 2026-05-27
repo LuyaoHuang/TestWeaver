@@ -10,6 +10,10 @@ import copy
 from fnmatch import fnmatch
 from typing import Any
 
+from .log import get_logger
+
+logger = get_logger(__name__)
+
 
 class Env:
     """Hierarchical state tree representing the test environment.
@@ -50,6 +54,7 @@ class Env:
         Args:
             path: Dot-separated state path (e.g. ``'vm.config.tpm'``).
         """
+        logger.trace("Env.set(%r)", path)
         node = self._get_node(path, create=True)
         node.data = True
 
@@ -59,6 +64,7 @@ class Env:
         Args:
             path: Dot-separated state path.
         """
+        logger.trace("Env.unset(%r)", path)
         node = self._get_node(path)
         if node is not None:
             node.data = False
@@ -107,6 +113,7 @@ class Env:
         Args:
             path: Dot-separated state path to clear.
         """
+        logger.trace("Env.clear(%r)", path)
         node = self._get_node(path)
         if node is not None:
             node.data = False
@@ -120,6 +127,7 @@ class Env:
             src: Source path to copy from.
             tgt: Target path to copy into (created if missing).
         """
+        logger.trace("Env.graft(src=%r, tgt=%r)", src, tgt)
         src_node = self._get_node(src)
         if src_node is None:
             return

@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
-import logging
 from pathlib import Path
 from typing import Any, Callable
 
+from .log import get_logger
 from .schema import GraftDef, Operation
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def load_module(path: str | Path) -> Any:

@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import random as _random
 
+from .log import get_logger
 from .schema import Operation, TestCase
+
+logger = get_logger(__name__)
 
 SORT_STRATEGIES = (
     "shortest",
@@ -61,6 +64,8 @@ def sort_cases(
             f"Available: {', '.join(SORT_STRATEGIES)}"
         )
 
+    logger.debug("Sorting %d case(s) by strategy=%s (seed=%s)", len(cases), strategy, seed)
+
     if strategy == "shortest":
         scored = [(len(c.steps), c) for c in cases]
         scored.sort(key=lambda t: t[0])
@@ -100,4 +105,5 @@ def sort_cases(
     for score, case in scored:
         copy = case.model_copy(update={"priority": float(score)})
         result.append(copy)
+    logger.info("Sorted %d case(s): %s", len(result), [c.case_id for c in result[:3]])
     return result

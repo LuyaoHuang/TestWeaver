@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from typing import Any, Callable, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 
 class ParamDef(BaseModel):

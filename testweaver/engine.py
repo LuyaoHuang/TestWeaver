@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import signal
 import subprocess
@@ -13,7 +12,9 @@ from typing import Any, Callable
 
 import networkx as nx
 
-logger = logging.getLogger(__name__)
+from .log import get_logger
+
+logger = get_logger(__name__)
 
 from .env import Env
 from .graph import _render_state_paths, apply_operation

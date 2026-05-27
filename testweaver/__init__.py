@@ -27,6 +27,7 @@ from testweaver.decorators import (
     when_param,
 )
 from testweaver.filtering import filter_cases
+from testweaver.log import TRACE, get_logger
 from testweaver.modifiers import EdgeGuard, TransientHook, TransitionObserver
 from testweaver.schema import StateData
 from testweaver.sorting import sort_cases

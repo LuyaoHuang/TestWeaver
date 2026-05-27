@@ -22,6 +22,10 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from .log import get_logger
+
+logger = get_logger(__name__)
+
 
 def _ensure_meta(func: Callable) -> dict[str, Any]:
     """Get or create the ``_tw_meta`` metadata dict on a function."""

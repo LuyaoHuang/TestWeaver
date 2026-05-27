@@ -3,7 +3,10 @@ from __future__ import annotations
 from itertools import product as cartesian_product
 from typing import Any
 
+from .log import get_logger
 from .schema import Operation, ParamConstraint, ParamMatrix
+
+logger = get_logger(__name__)
 
 
 def _constraint_matches(
@@ -40,7 +43,16 @@ def expand_matrix(matrix: ParamMatrix) -> list[dict[str, Any]]:
     names = [axis.name for axis in matrix.axes]
     value_lists = [axis.values for axis in matrix.axes]
 
+    logger.debug(
+        "Expanding matrix: %d axes (%s), %d constraints",
+        len(matrix.axes), names, len(matrix.constraints),
+    )
+
     result = []
+    total = 1
+    for vl in value_lists:
+        total *= len(vl)
+
     for values in cartesian_product(*value_lists):
         combo = dict(zip(names, values))
         excluded = any(
@@ -50,6 +62,7 @@ def expand_matrix(matrix: ParamMatrix) -> list[dict[str, Any]]:
         if not excluded:
             result.append(combo)
 
+    logger.debug("Matrix expanded: %d/%d combinations (excluded %d)", len(result), total, total - len(result))
     return result
 
 
@@ -77,4 +90,6 @@ def get_skip_ops(
             for cond in op.skip_when:
                 if all(combination.get(k) == v for k, v in cond.items()):
                     skip.add(op.name)
+    if skip:
+        logger.debug("Skip ops for combination %s: %s", combination, skip)
     return skip
