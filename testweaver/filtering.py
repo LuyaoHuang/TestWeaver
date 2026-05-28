@@ -18,12 +18,15 @@ def filter_cases(
     fault_only: bool = False,
     no_fault: bool = False,
     params: dict[str, str] | None = None,
+    tags: list[str] | None = None,
+    exclude_tags: list[str] | None = None,
+    ops_by_name: dict[str, Any] | None = None,
 ) -> list[TestCase]:
     """Filter generated test cases by the given criteria.
 
     All criteria are AND-combined: a case must satisfy every specified
-    filter.  Within list-valued filters (*ids*, *targets*, *steps*),
-    matching is OR: the case must match at least one entry.
+    filter.  Within list-valued filters (*ids*, *targets*, *steps*,
+    *tags*), matching is OR: the case must match at least one entry.
 
     Args:
         cases: Test cases to filter.
@@ -33,6 +36,10 @@ def filter_cases(
         fault_only: Keep only fault-injection cases.
         no_fault: Exclude fault-injection cases.
         params: Key/value pairs that must all appear in the case's params.
+        tags: Keep cases where at least one step has at least one of these tags.
+        exclude_tags: Remove cases where any step has any of these tags.
+        ops_by_name: Operation lookup dict keyed by name (required when
+            *tags* or *exclude_tags* is set).
 
     Returns:
         The subset of *cases* matching all criteria.
@@ -43,9 +50,12 @@ def filter_cases(
     if fault_only and no_fault:
         raise ValueError("fault_only and no_fault are mutually exclusive")
 
+    if (tags or exclude_tags) and ops_by_name is None:
+        raise ValueError("ops_by_name is required when filtering by tags")
+
     logger.debug(
-        "Filtering %d case(s): ids=%s targets=%s steps=%s fault_only=%s no_fault=%s params=%s",
-        len(cases), ids, targets, steps, fault_only, no_fault, params,
+        "Filtering %d case(s): ids=%s targets=%s steps=%s fault_only=%s no_fault=%s params=%s tags=%s exclude_tags=%s",
+        len(cases), ids, targets, steps, fault_only, no_fault, params, tags, exclude_tags,
     )
 
     result: list[TestCase] = []
@@ -71,6 +81,19 @@ def filter_cases(
                     match = False
                     break
             if not match:
+                continue
+
+        if tags or exclude_tags:
+            case_tags: set[str] = set()
+            for s in case.steps + case.cleanup_steps:
+                op = ops_by_name.get(s)
+                if op is not None:
+                    case_tags.update(op.tags)
+
+            if tags and not case_tags.intersection(tags):
+                continue
+
+            if exclude_tags and case_tags.intersection(exclude_tags):
                 continue
 
         result.append(case)

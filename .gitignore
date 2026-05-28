@@ -28,3 +28,4 @@ htmlcov/
 
 *.json
 !examples/*.json
+*.txt

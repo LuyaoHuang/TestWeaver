@@ -4,7 +4,7 @@ from pathlib import Path
 
 from testweaver.decorators import (
     action, check, cleanup, setup, provides, requires, clears,
-    excludes, graft, cut, priority,
+    excludes, graft, cut, priority, tag,
 )
 from testweaver.env import Env
 from testweaver.loader import load_module, extract_operations, load_operations_from_modules
@@ -494,6 +494,52 @@ def test_priority_stacked_with_action():
     assert meta['type'] == 'action'
     assert meta['priority'] == 3
     assert meta['provides'] == ['x']
+
+
+def test_tag_decorator_single():
+    @tag("smoke")
+    def my_op(params):
+        pass
+    assert my_op._tw_meta['tags'] == ['smoke']
+
+
+def test_tag_decorator_multiple():
+    @tag("smoke", "fast", "regression")
+    def my_op(params):
+        pass
+    assert my_op._tw_meta['tags'] == ['smoke', 'fast', 'regression']
+
+
+def test_tag_stacked_with_other_decorators():
+    @action
+    @tag("smoke", "e2e")
+    @provides('vm.active')
+    def start_vm(params):
+        pass
+    meta = start_vm._tw_meta
+    assert meta['type'] == 'action'
+    assert meta['tags'] == ['smoke', 'e2e']
+    assert meta['provides'] == ['vm.active']
+
+
+def test_tag_extracted_by_loader():
+    src = textwrap.dedent("""\
+        from testweaver import action, provides, tag
+
+        @action
+        @tag("smoke", "slow")
+        @provides('state.ready')
+        def setup_op(params):
+            pass
+    """)
+    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+        f.write(src)
+        f.flush()
+        module = load_module(f.name)
+        pairs = extract_operations(module)
+    assert len(pairs) == 1
+    op, _ = pairs[0]
+    assert op.tags == ['smoke', 'slow']
 
 
 def test_priority_extracted_by_loader():

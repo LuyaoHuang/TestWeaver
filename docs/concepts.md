@@ -15,6 +15,7 @@ An operation is a single test step with dependency declarations:
 | `grafts` | Copy a subtree (`src` -> `tgt`) |
 | `cuts` | Remove an entire subtree |
 | `priority` | Integer priority level for case sorting (default: 0, higher = more important) |
+| `tags` | String labels for filtering (e.g. `smoke`, `regression`, `slow`) |
 | `run` | Shell command to execute (YAML-only mode) |
 | `verify` | Shell command to verify the operation succeeded (runs after `run`) |
 
@@ -44,6 +45,7 @@ An operation is a single test step with dependency declarations:
 | `@priority(level)` | Set operation priority for case sorting (higher = more important) |
 | `@fault_for(op_name)` | Create a fault-injection variant of the named operation |
 | `@custom_params` | Transform suite params before case generation (environment detection) |
+| `@tag(*tags)` | Attach metadata labels to an operation for suite-level filtering |
 
 ## Hierarchical State
 
@@ -246,6 +248,49 @@ Two approaches for parameterized testing:
 - **Parameter Matrix** (`param_matrix`) — Cartesian product of axes with constraint filtering; use when parameters are data values
 
 See [examples/parameters.md](examples/parameters.md) for details.
+
+## Tag Filtering
+
+Tags are string labels attached to operations via the `@tag` decorator or the `tags` field in YAML. The suite definition can then filter cases based on their operations' tags — this is how you create separate suite files for smoke, regression, or slow tests that all share the same operation definitions.
+
+**Tag operations:**
+
+```python
+@tag("smoke", "fast")
+@check
+@requires('vm.active')
+def verify_vm(params, env): ...
+```
+
+**Filter by tag in the suite YAML:**
+
+```yaml
+suite:
+  name: smoke-tests
+  targets: [verify_vm, check_net]
+  filter_tags: [smoke]       # only run cases touching smoke-tagged ops
+  exclude_tags: [slow]       # skip cases that touch slow operations
+```
+
+A case matches `filter_tags` if **any** of its operations (including cleanup steps) has at least one of the listed tags. `exclude_tags` removes cases that touch any excluded tag. Multiple tags are OR-ed: `filter_tags: [smoke, regression]` keeps cases that have either tag.
+
+Common patterns:
+
+```yaml
+# Regression suite — run everything except slow tests
+suite:
+  name: regression
+  targets: [verify_vm, check_net, check_disk]
+  exclude_tags: [slow, flaky]
+
+# Smoke suite — only fast checks
+suite:
+  name: smoke
+  targets: [verify_vm, check_net, check_disk]
+  filter_tags: [smoke]
+```
+
+See [examples/tag-filtering.md](examples/tag-filtering.md) for a full worked example.
 
 ## Fluent Assertions
 

@@ -221,6 +221,27 @@ def fault_for(operation_name: str, *, terminal: bool = True) -> Callable:
     return decorator
 
 
+def tag(*tags: str) -> Callable:
+    """Attach metadata tags to an operation for suite-level filtering.
+
+    Tags are strings like ``"smoke"``, ``"regression"``, ``"slow"``.
+    Use ``filter_tags`` / ``exclude_tags`` in the suite definition to
+    control which cases run based on their operations' tags.
+
+    Usage::
+
+        @tag("smoke", "fast")
+        @check
+        @requires('vm.active')
+        def verify_vm(params, env): ...
+    """
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        meta.setdefault('tags', []).extend(tags)
+        return func
+    return decorator
+
+
 def custom_params(func: Callable) -> Callable:
     """Mark a function to transform suite params before test case generation.
 

@@ -199,6 +199,7 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
         definition.suite.params.update(overrides)
 
     cases = generate_cases(definition)
+    ops_by_name = {op.name: op for op in definition.operations}
     cases = filter_cases(
         cases,
         ids=list(filters) or None,
@@ -206,6 +207,9 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
         steps=list(filter_steps) or None,
         fault_only=fault_only,
         no_fault=no_fault,
+        tags=definition.suite.filter_tags or None,
+        exclude_tags=definition.suite.exclude_tags or None,
+        ops_by_name=ops_by_name,
     )
     if sort_strategy:
         cases = sort_cases(
@@ -343,6 +347,7 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
         max_state_depth=definition.suite.max_state_depth,
     )
     cases = generate_cases(definition, graph)
+    ops_by_name = {op.name: op for op in definition.operations}
     cases = filter_cases(
         cases,
         ids=list(filters) or None,
@@ -350,6 +355,9 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
         steps=list(filter_steps) or None,
         fault_only=fault_only,
         no_fault=no_fault,
+        tags=definition.suite.filter_tags or None,
+        exclude_tags=definition.suite.exclude_tags or None,
+        ops_by_name=ops_by_name,
     )
     if sort_strategy:
         cases = sort_cases(

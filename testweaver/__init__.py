@@ -23,6 +23,7 @@ from testweaver.decorators import (
     state_data,
     suite_setup,
     suite_teardown,
+    tag,
     timeout,
     unless_param,
     verify_for,

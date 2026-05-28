@@ -147,7 +147,19 @@ testweaver run my_test.yaml --fault-only                     # Fault cases only
 testweaver run my_test.yaml -k "check-*" --no-fault          # Combine filters
 ```
 
-See [examples/filtering.md](examples/filtering.md) for details.
+Tag filtering is configured in the suite YAML (not CLI flags):
+
+```yaml
+suite:
+  name: smoke-tests
+  targets: [verify_vm, check_net]
+  filter_tags: [smoke]       # only cases touching smoke-tagged ops
+  exclude_tags: [slow]       # skip cases with slow operations
+```
+
+See [examples/tag-filtering.md](examples/tag-filtering.md) for details.
+
+See [examples/filtering.md](examples/filtering.md) for all filtering options.
 
 ## Sorting
 

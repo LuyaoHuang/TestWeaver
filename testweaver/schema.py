@@ -108,6 +108,7 @@ class Operation(BaseModel):
     fault_for: str | None = Field(default=None)
     terminal: bool = True
     priority: int = 0
+    tags: list[str] = Field(default_factory=list)
     instance_params: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     @model_validator(mode="after")
@@ -157,6 +158,8 @@ class TestSuite(BaseModel):
     cleanup: bool = True
     faults: bool = True
     generation_strategy: Literal["exhaustive", "pairwise", "representative"] = "exhaustive"
+    filter_tags: list[str] = Field(default_factory=list)
+    exclude_tags: list[str] = Field(default_factory=list)
 
 
 class LifecycleHooks(BaseModel):
