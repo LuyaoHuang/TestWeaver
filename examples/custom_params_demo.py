@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import platform
 import subprocess
-from testweaver import action, check, custom_params, provides, requires
+from testweaver import action, check, custom_params, params_require, provides, requires
 
 
 # ---------------------------------------------------------------------------
@@ -62,25 +62,22 @@ def detect_environment(params):
 
 @action
 @provides('vms.running')
+@params_require('hypervisor', ('vm_count', '!=', 0))
 def start_vms(params, env):
-    """Start VMs based on the detected hypervisor capability."""
-    hv = params.get('hypervisor', 'none')
+    """Start VMs — only included when hypervisor is detected and VMs > 0."""
     count = params.get('vm_count', 0)
     arch = params.get('arch', 'unknown')
 
-    if hv == 'none':
-        print(f"[SKIP] No hypervisor available on {arch}, skipping VM start")
-        return
-
-    print(f"Starting {count} VM(s) on {hv} ({arch})")
+    print(f"Starting {count} VM(s) on {params['hypervisor']} ({arch})")
     for i in range(count):
         print(f"  VM {i}: started")
 
 
 @check
 @requires('vms.running')
+@params_require('hypervisor')
 def verify_vms(params, env):
-    """Verify VMs are running — only generated when hypervisor is available."""
+    """Verify VMs are running — only in test cases when hypervisor is available."""
     count = params.get('vm_count', 0)
     print(f"Verifying {count} VM(s) are healthy")
 

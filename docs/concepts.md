@@ -37,6 +37,7 @@ An operation is a single test step with dependency declarations:
 | `@when_param(name, value)` | Require a specific parameter value (param graph) |
 | `@unless_param(name, value)` | Exclude when a parameter value is set (param graph) |
 | `@skip_when(**conditions)` | Skip operation when conditions match (param matrix) |
+| `@params_require(*keys)` | Require param keys/values; filters operation before graph gen |
 | `@suite_setup` | Run once before all test cases (lifecycle hook) |
 | `@suite_teardown` | Run once after all test cases (lifecycle hook) |
 | `@case_setup` | Run before each test case (lifecycle hook) |
@@ -237,6 +238,7 @@ Key points:
 - Multiple `@custom_params` functions run in alphabetical order by function name
 - CLI `--param` overrides take precedence (they run after custom params)
 - Returning `None` raises an error — always return the params dict
+- Use `@params_require` on operations to filter them based on the detected params
 
 See the full example at `examples/custom_params_demo.py`.
 

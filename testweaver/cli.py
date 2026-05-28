@@ -198,6 +198,8 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
         overrides = _parse_param_overrides(param)
         definition.suite.params.update(overrides)
 
+    definition.filter_operations_by_params()
+
     cases = generate_cases(definition)
     ops_by_name = {op.name: op for op in definition.operations}
     cases = filter_cases(
@@ -338,6 +340,8 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
     if param:
         overrides = _parse_param_overrides(param)
         definition.suite.params.update(overrides)
+
+    definition.filter_operations_by_params()
 
     from .graph import build_graph
     param_choices = definition.suite.param_choices or None

@@ -175,7 +175,7 @@ Override from the command line:
 testweaver run simple_test.yaml -p filename=/tmp/other.txt --format text
 ```
 
-**Environment-aware params**: Use `@custom_params` to detect the runtime environment and auto-adjust params before test cases are generated (e.g., detect cgroup version, hypervisor availability, or host architecture). See [Core Concepts](concepts.md#custom-params-environment-detection) for details.
+**Environment-aware params**: Use `@custom_params` to detect the runtime environment and auto-adjust params before test cases are generated (e.g., detect cgroup version, hypervisor availability, or host architecture). Use `@params_require` on operations to filter them based on detected params, so only relevant operations appear in the test graph. See [Core Concepts](concepts.md#custom-params-environment-detection) for details.
 
 ## Step 7: Pass Runtime Data Between Operations
 

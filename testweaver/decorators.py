@@ -242,6 +242,47 @@ def tag(*tags: str) -> Callable:
     return decorator
 
 
+def params_require(*keys: str | tuple) -> Callable:
+    """Require specific params keys (and optionally values) for this operation.
+
+    Operations that don't meet their params requirements are filtered out
+    before graph generation.  Use together with ``@custom_params`` to
+    dynamically detect the environment and constrain the test graph.
+
+    **Key-existence check** (string)::
+
+        @params_require('kvm_available', 'arch')
+        @check
+        @requires('vm.active')
+        def verify_vm(params, env): ...
+
+    **Exact-value check** (3-tuple)::
+
+        @params_require(('cgroup_version', '=', 2))
+        @action
+        @provides('cgroup.configured')
+        def configure_cgroup_v2(params, env): ...
+
+    All conditions must be satisfied for the operation to be included.
+    """
+    parsed = []
+    for key in keys:
+        if isinstance(key, str):
+            parsed.append((key, None, None))
+        elif isinstance(key, tuple) and len(key) == 3:
+            parsed.append((key[0], key[1], key[2]))
+        else:
+            raise TypeError(
+                f"params_require expects str or 3-tuple, got {type(key)}"
+            )
+
+    def decorator(func: Callable) -> Callable:
+        meta = _ensure_meta(func)
+        meta.setdefault('params_require', []).extend(parsed)
+        return func
+    return decorator
+
+
 def custom_params(func: Callable) -> Callable:
     """Mark a function to transform suite params before test case generation.
 

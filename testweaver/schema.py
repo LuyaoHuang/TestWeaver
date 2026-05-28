@@ -109,6 +109,7 @@ class Operation(BaseModel):
     terminal: bool = True
     priority: int = 0
     tags: list[str] = Field(default_factory=list)
+    params_require: list[list] = Field(default_factory=list)
     instance_params: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     @model_validator(mode="after")
@@ -291,6 +292,43 @@ class TestDefinition(BaseModel):
                 raise ValueError(
                     f"Custom params function '{func.__name__}' returned None"
                 )
+
+    def filter_operations_by_params(self) -> list[Operation]:
+        """Remove operations whose ``params_require`` conditions are not met.
+
+        Called after ``apply_custom_params`` and CLI param overrides, but
+        before graph building.  Returns the list of removed operations.
+        """
+        removed = []
+        surviving = []
+        for op in self.operations:
+            if _operation_meets_params_require(op, self.suite.params):
+                surviving.append(op)
+            else:
+                logger.info(
+                    "Filtered operation '%s': params_require not met", op.name
+                )
+                removed.append(op)
+        self.operations = surviving
+        return removed
+
+
+def _operation_meets_params_require(
+    op: Operation, params: dict[str, Any],
+) -> bool:
+    """Return True if *op*'s params_require conditions are satisfied."""
+    if not op.params_require:
+        return True
+    for key, operator, expected in op.params_require:
+        if key not in params:
+            return False
+        if operator is not None:
+            actual = params[key]
+            if operator == '=' and actual != expected:
+                return False
+            if operator == '!=' and actual == expected:
+                return False
+    return True
 
 
 class HookResult(BaseModel):

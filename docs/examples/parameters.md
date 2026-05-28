@@ -89,3 +89,37 @@ Override or add parameters from the command line:
 testweaver run my_test.yaml -p guest_name=testvm -p timeout=60
 testweaver matrix my_test.yaml --format text   # Preview parameter combinations
 ```
+
+## Approach 3: Runtime Param Filtering (`@params_require`)
+
+When params are detected at runtime via `@custom_params`, use `@params_require` to filter operations before the graph is built. This is the recommended companion to `@custom_params`:
+
+```python
+from testweaver import action, check, custom_params, params_require, provides, requires
+
+@custom_params
+def detect_env(params):
+    import os
+    params['has_kvm'] = os.path.exists('/dev/kvm')
+    return params
+
+@action
+@provides('vm.active')
+@params_require('has_kvm')
+def start_kvm_vm(params, env):
+    """Only included when /dev/kvm exists."""
+    ...
+
+@check
+@requires('vm.active')
+@params_require(('hypervisor', '=', 'kvm'))
+def verify_kvm(params, env):
+    """Only included when hypervisor is exactly 'kvm'."""
+    ...
+```
+
+- **String argument** — operation is included only if the key exists in params
+- **3-tuple argument** `(key, operator, value)` — operation is included only if `params[key]` matches (supports `=` and `!=`)
+- Filtering happens after `@custom_params` and CLI `--param` overrides, but before graph building
+- Operations without `@params_require` are always included (no filtering)
+
