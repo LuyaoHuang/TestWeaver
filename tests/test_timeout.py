@@ -144,7 +144,7 @@ def test_operation_timeout_set():
 def test_run_callable_succeeds_within_timeout():
     def fast_func(params, env):
         return "ok"
-    ok, stdout, stderr, ret = _run_callable(fast_func, {}, Env(), timeout=5)
+    ok, stdout, stderr, ret, _ = _run_callable(fast_func, {}, Env(), timeout=5)
     assert ok is True
     assert ret == "ok"
 
@@ -153,7 +153,7 @@ def test_run_callable_timeout_enforced():
     def slow_func(params, env):
         time.sleep(10)
     start = time.monotonic()
-    ok, stdout, stderr, ret = _run_callable(slow_func, {}, Env(), timeout=1)
+    ok, stdout, stderr, ret, _ = _run_callable(slow_func, {}, Env(), timeout=1)
     elapsed = time.monotonic() - start
     assert ok is False
     assert "timed out" in stderr.lower()
@@ -163,7 +163,7 @@ def test_run_callable_timeout_enforced():
 def test_run_callable_exception_still_caught():
     def bad_func(params, env):
         raise ValueError("broken")
-    ok, stdout, stderr, ret = _run_callable(bad_func, {}, Env(), timeout=5)
+    ok, stdout, stderr, ret, _ = _run_callable(bad_func, {}, Env(), timeout=5)
     assert ok is False
     assert "broken" in stderr
 

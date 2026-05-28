@@ -324,6 +324,7 @@ class StepResult(BaseModel):
     verify_result: ObserverResult | None = None
     observer_results: list[ObserverResult] = Field(default_factory=list)
     env_data: dict[str, Any] | None = None
+    is_assertion_failure: bool = False
 
 
 class AttemptResult(BaseModel):

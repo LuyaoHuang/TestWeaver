@@ -65,8 +65,12 @@ def _run_callable(
     params: dict[str, Any],
     env: Env,
     timeout: int = 300,
-) -> tuple[bool, str, str, Any]:
-    """Call a Python callable with params and env, capture success/output/return."""
+) -> tuple[bool, str, str, Any, bool]:
+    """Call a Python callable with params and env, capture success/output/return.
+
+    Returns:
+        ``(ok, stdout, stderr, return_value, is_assertion_failure)``
+    """
     logger.debug("Calling %s (timeout=%ds)", getattr(func, "__qualname__", func), timeout)
 
     use_alarm = threading.current_thread() is threading.main_thread()
@@ -82,15 +86,17 @@ def _run_callable(
         if use_alarm:
             signal.alarm(0)
         logger.debug("Callable succeeded")
-        return True, "", "", ret
+        return True, "", "", ret, False
     except TimeoutError as e:
         logger.warning("Callable timed out after %ds", timeout)
-        return False, "", str(e), None
+        return False, "", str(e), None, False
     except Exception as e:
         if use_alarm:
             signal.alarm(0)
+        from .assertions import AssertionError as _AssertionError
+        is_assert = isinstance(e, _AssertionError)
         logger.debug("Callable raised %s: %s", type(e).__name__, e)
-        return False, "", str(e), None
+        return False, "", str(e), None, is_assert
     finally:
         if use_alarm:
             signal.signal(signal.SIGALRM, old_handler)
@@ -205,7 +211,7 @@ def run_step(
 
     if operation.callable is not None:
         start = time.monotonic()
-        ok, stdout, stderr, ret = _run_callable(operation.callable, params, env, timeout)
+        ok, stdout, stderr, ret, is_assert = _run_callable(operation.callable, params, env, timeout)
         duration = (time.monotonic() - start) * 1000
         env_data = None
         if ok and isinstance(ret, StateData):
@@ -219,6 +225,7 @@ def run_step(
             stderr=stderr,
             error=None if ok else stderr,
             env_data=env_data,
+            is_assertion_failure=is_assert,
         )
         if modifier is not None:
             _record_modifier(result, modifier)
@@ -321,7 +328,7 @@ def _run_verify(
     """Run the operation's verify callback or command, if defined."""
     if operation.verify_callable is not None:
         start = time.monotonic()
-        ok, _, stderr, _ = _run_callable(operation.verify_callable, params, env, timeout)
+        ok, _, stderr, _, _ = _run_callable(operation.verify_callable, params, env, timeout)
         duration = (time.monotonic() - start) * 1000
         if ok:
             return ObserverResult(

@@ -217,7 +217,43 @@ Key points:
 
 See [examples/data-flow.md](examples/data-flow.md) for a complete VM provisioning example.
 
-## Step 8: Visualize the Graph
+## Step 9: Add Assertions
+
+Instead of relying on exit codes alone, use fluent assertions inside your callables for rich failure messages:
+
+```python
+from testweaver import action, check, cleanup, provides, requires, clears, state_data
+from testweaver import assert_that
+
+@action
+@provides('file.exists')
+def create_file(params, env):
+    import subprocess
+    result = subprocess.run(
+        'echo "hello world" > /tmp/test.txt', shell=True, capture_output=True, text=True
+    )
+    assert_that(result.returncode, "create_file exit code").equals(0)
+
+@check
+@requires('file.exists')
+def check_file(params, env):
+    import subprocess
+    result = subprocess.run('cat /tmp/test.txt', shell=True, capture_output=True, text=True)
+    assert_that(result.stdout.strip()).equals("hello world")
+    assert_that(result.returncode).equals(0)
+```
+
+On failure, you get a clear diff:
+
+```
+create_file exit code
+  expected: 0
+    actual: 1
+```
+
+Assertions can be chained, and ``assert_raises`` validates expected exceptions. See [Fluent Assertions](concepts.md#fluent-assertions) and [examples/assertions.md](examples/assertions.md) for the full API.
+
+## Step 10: Visualize the Graph
 
 See the dependency graph to understand what TestWeaver built:
 
@@ -235,6 +271,7 @@ testweaver graph my_test.yaml --format dot | dot -Tpng -o graph.png  # Image
   - [Parameters](examples/parameters.md) — parameter graph and matrix
   - [Multi-Instance](examples/multi-instance.md) — multiple devices with independent states
   - [Data Flow](examples/data-flow.md) — passing runtime data between operations
+  - [Assertions](examples/assertions.md) — fluent assertion API with rich diffs
   - [Graph Modifiers](examples/graph-modifiers.md) — runtime execution control
   - [Filtering](examples/filtering.md) — run specific subsets of cases
   - [Logging](examples/logging.md) — debug and trace execution with `--trace` and `TESTWEAVER_LOG`

@@ -34,6 +34,11 @@ TestWeaver is a modern rework of [depend-test-framework](https://github.com/Luya
 - Progress reporting — live progress bar with `--progress`
 - Logging — `--verbose`, `--debug`, `--log-file`
 
+**Assertions**
+- Fluent assertion API — `assert_that(value).equals(expected).greater_than(0)`
+- Chained assertions with rich expected-vs-actual diffs
+- `assert_raises` context manager for exception testing
+
 ## Installation
 
 ```bash
@@ -141,6 +146,7 @@ testweaver graph my_test.yaml --format dot | dot -Tpng -o graph.png  # Visualize
 | [Progress](docs/examples/progress.md) | Progress bar and callbacks |
 | [Lifecycle Hooks](docs/examples/lifecycle-hooks.md) | Suite and case setup/teardown |
 | [Data Flow](docs/examples/data-flow.md) | Passing runtime data between operations |
+| [Assertions](docs/examples/assertions.md) | Fluent assertion API with chaining and diffs |
 | [Virtualization](docs/examples/virtualization.md) | libvirt/QEMU example modules |
 
 ## Virtualization Examples

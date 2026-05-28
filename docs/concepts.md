@@ -247,6 +247,60 @@ Two approaches for parameterized testing:
 
 See [examples/parameters.md](examples/parameters.md) for details.
 
+## Fluent Assertions
+
+TestWeaver provides a fluent assertion API for verifying conditions inside operation callables. Assertion failures include expected-vs-actual diffs and are surfaced clearly in test reports.
+
+```python
+from testweaver import assert_that, assert_raises
+
+@check
+@requires('vm.active')
+def verify_vm(params, env):
+    node = env._get_node('vm.active')
+    assert_that(node.value['status']).equals('running')
+    assert_that(node.value['cpu_count']).greater_than(0)
+    assert_that(node.value['uuid']).matches(r'^[0-9a-f-]{36}$')
+
+@action
+@provides('config.loaded')
+def load_config(params, env):
+    with assert_raises(ValueError, message="bad syntax"):
+        parse_config("{invalid")
+```
+
+| Method | Description |
+|--------|-------------|
+| `.equals(expected)` | Exact equality check |
+| `.not_equals(expected)` | Inequality check |
+| `.is_true()` / `.is_false()` | Truthiness / falsiness |
+| `.is_none()` / `.is_not_none()` | None checks |
+| `.greater_than(n)` | Numeric `>` comparison |
+| `.greater_than_or_equal_to(n)` | Numeric `>=` comparison |
+| `.less_than(n)` | Numeric `<` comparison |
+| `.less_than_or_equal_to(n)` | Numeric `<=` comparison |
+| `.contains(item)` | Membership test (`in`) |
+| `.not_contains(item)` | Inverse membership |
+| `.has_length(n)` | `len()` check |
+| `.is_instance_of(cls)` | `isinstance` check |
+| `.matches(pattern)` | Regex search on strings |
+| `.described_as(label)` | Attach a human-readable label to the assertion |
+
+Assertions can be chained — the first failure stops execution and reports the mismatch:
+
+```python
+assert_that(result).is_not_none().has_length(3).contains('key')
+```
+
+`assert_raises` is a context manager that passes if the expected exception is raised, and fails otherwise (including when the wrong type is raised or no exception occurs):
+
+```python
+with assert_raises(ValueError, message="invalid config"):
+    load_config(bad_path)
+```
+
+See [examples/assertions.md](examples/assertions.md) for details.
+
 ## Multi-Instance Namespaces
 
 Model multiple devices of the same type (`TPM:tpm0`, `TPM:tpm1`) with independent states using the `:` namespace separator. Supports wildcard queries (`TPM:tpm*.ready`) and generation strategies to control state-space explosion.

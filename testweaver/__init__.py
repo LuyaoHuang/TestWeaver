@@ -2,6 +2,7 @@
 
 __version__ = "0.1.0"
 
+from testweaver.assertions import assert_raises, assert_that
 from testweaver.decorators import (
     action,
     case_setup,
