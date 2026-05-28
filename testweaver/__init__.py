@@ -9,6 +9,7 @@ from testweaver.decorators import (
     check,
     cleanup,
     clears,
+    custom_params,
     cut,
     excludes,
     fault_for,

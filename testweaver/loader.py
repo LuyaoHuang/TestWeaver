@@ -114,6 +114,27 @@ def extract_hooks(module: Any) -> dict[str, list[Callable]]:
     return hooks
 
 
+def extract_custom_params(module: Any) -> list[Callable]:
+    """Extract custom params functions from a loaded module.
+
+    Scans all functions in *module* for ``_tw_meta`` attributes with a
+    ``'custom_params'`` key set by the ``@custom_params`` decorator.
+
+    Args:
+        module: A loaded Python module.
+
+    Returns:
+        List of custom params callables.
+    """
+    funcs = []
+    for _name, obj in inspect.getmembers(module, inspect.isfunction):
+        meta = getattr(obj, '_tw_meta', None)
+        if meta and meta.get('custom_params'):
+            funcs.append(obj)
+    logger.info("Extracted %d custom params function(s) from module", len(funcs))
+    return funcs
+
+
 def load_operations_from_modules(
     module_paths: list[str],
     base_dir: Path | None = None,

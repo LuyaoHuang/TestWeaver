@@ -187,6 +187,7 @@ def generate(path: str, fmt: str, param: tuple[str, ...],
     """Generate test cases from a definition file."""
     _configure_logging(verbose=verbose, debug=debug, trace=trace)
     definition = load_definition(path)
+    definition.apply_custom_params()
     if max_graph_nodes is not None:
         definition.suite.max_graph_nodes = max_graph_nodes
     if max_path_depth is not None:
@@ -323,6 +324,7 @@ def run(path: str, output: str | None, timeout: int, fmt: str, param: tuple[str,
     """Run test cases from a definition file."""
     _configure_logging(verbose=verbose, debug=debug, trace=trace, log_file=log_file, workers=workers)
     definition = load_definition(path)
+    definition.apply_custom_params()
     if max_graph_nodes is not None:
         definition.suite.max_graph_nodes = max_graph_nodes
     if max_path_depth is not None:

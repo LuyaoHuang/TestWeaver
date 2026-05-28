@@ -181,6 +181,7 @@ class TestDefinition(BaseModel):
     modules: list[str] = Field(default_factory=list)
     suite: TestSuite
     hooks: LifecycleHooks = Field(default_factory=LifecycleHooks)
+    custom_params_funcs: list[Callable] = Field(default_factory=list, exclude=True)
 
     @model_validator(mode="after")
     def validate_targets_exist(self) -> TestDefinition:
@@ -272,6 +273,21 @@ class TestDefinition(BaseModel):
                         f"in graft paths: src='{g.src}', tgt='{g.tgt}'"
                     )
         return self
+
+
+    def apply_custom_params(self) -> None:
+        """Run all custom params functions against suite params.
+
+        Each registered ``@custom_params`` function is called sequentially
+        with ``self.suite.params``.  Functions should mutate the dict and
+        return it.  An empty return value (``None``) raises an error.
+        """
+        for func in self.custom_params_funcs:
+            result = func(self.suite.params)
+            if result is None:
+                raise ValueError(
+                    f"Custom params function '{func.__name__}' returned None"
+                )
 
 
 class HookResult(BaseModel):
@@ -399,7 +415,7 @@ class TestCase(BaseModel):
 
 def _load_definition_from_module(path: Path) -> TestDefinition:
     """Load a test definition from a single Python module file."""
-    from .loader import extract_hooks, extract_operations, load_module
+    from .loader import extract_custom_params, extract_hooks, extract_operations, load_module
     module = load_module(path)
     op_pairs = extract_operations(module)
     operations = []
@@ -410,6 +426,7 @@ def _load_definition_from_module(path: Path) -> TestDefinition:
     if not targets:
         targets = [operations[-1].name] if operations else []
     hook_map = extract_hooks(module)
+    custom_params_funcs = extract_custom_params(module)
     return TestDefinition(
         operations=operations,
         suite=TestSuite(
@@ -417,6 +434,7 @@ def _load_definition_from_module(path: Path) -> TestDefinition:
             targets=targets,
         ),
         hooks=LifecycleHooks(**hook_map),
+        custom_params_funcs=custom_params_funcs,
     )
 
 
@@ -455,7 +473,7 @@ def load_definition(path: str | Path) -> TestDefinition:
     module_paths = data.get('modules', [])
     if module_paths:
         logger.debug("Loading %d external module(s)", len(module_paths))
-        from .loader import extract_hooks, load_module, load_operations_from_modules
+        from .loader import extract_custom_params, extract_hooks, load_module, load_operations_from_modules
         op_pairs = load_operations_from_modules(module_paths, base_dir=path.parent)
         module_ops = []
         for op, func in op_pairs:
@@ -475,6 +493,7 @@ def load_definition(path: str | Path) -> TestDefinition:
             'suite_setup': [], 'suite_teardown': [],
             'case_setup': [], 'case_teardown': [],
         }
+        all_custom_params: list[Callable] = []
         for mod_path in module_paths:
             p = Path(mod_path)
             if not p.is_absolute():
@@ -483,7 +502,9 @@ def load_definition(path: str | Path) -> TestDefinition:
             hook_map = extract_hooks(module)
             for key in all_hooks:
                 all_hooks[key].extend(hook_map[key])
+            all_custom_params.extend(extract_custom_params(module))
         defn.hooks = LifecycleHooks(**all_hooks)
+        defn.custom_params_funcs = all_custom_params
         logger.info("Definition loaded: %d operations, targets=%s", len(defn.operations), defn.suite.targets)
         return defn
 

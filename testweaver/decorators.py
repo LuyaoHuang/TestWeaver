@@ -221,6 +221,25 @@ def fault_for(operation_name: str, *, terminal: bool = True) -> Callable:
     return decorator
 
 
+def custom_params(func: Callable) -> Callable:
+    """Mark a function to transform suite params before test case generation.
+
+    The decorated function receives the suite params dict, modifies it
+    (typically based on environment detection), and returns it.  It runs
+    after module loading but before graph building and case generation.
+
+    Usage::
+
+        @custom_params
+        def detect_environment(params):
+            params['arch'] = platform.machine()
+            return params
+    """
+    meta = _ensure_meta(func)
+    meta['custom_params'] = True
+    return func
+
+
 def state_data(*args: Any, **kwargs: Any) -> Any:
     """Create a :class:`StateData` object to return from an operation callable.
 

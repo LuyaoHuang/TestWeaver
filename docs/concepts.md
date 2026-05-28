@@ -43,6 +43,7 @@ An operation is a single test step with dependency declarations:
 | `@timeout(seconds)` | Set per-operation timeout, overriding the global `--timeout` |
 | `@priority(level)` | Set operation priority for case sorting (higher = more important) |
 | `@fault_for(op_name)` | Create a fault-injection variant of the named operation |
+| `@custom_params` | Transform suite params before case generation (environment detection) |
 
 ## Hierarchical State
 
@@ -207,6 +208,35 @@ Hooks run at fixed points in test execution, outside the dependency graph:
 | `@case_teardown` | After each test case |
 
 Unlike `@setup` / `@cleanup` (graph nodes), lifecycle hooks always fire at their designated position. See [examples/lifecycle-hooks.md](examples/lifecycle-hooks.md) for details.
+
+## Custom Params (Environment Detection)
+
+The `@custom_params` decorator marks a function to transform suite params before the dependency graph is built. It is called once during definition loading, making it ideal for detecting the runtime environment:
+
+```python
+from testweaver import action, check, custom_params, provides, requires
+
+@custom_params
+def detect_environment(params):
+    """Detect host capabilities and adjust params before case generation."""
+    import platform
+    params['arch'] = platform.machine()
+
+    import subprocess
+    result = subprocess.run(['test', '-e', '/dev/kvm'], capture_output=True)
+    params['has_kvm'] = result.returncode == 0
+
+    return params
+```
+
+Key points:
+- The function receives the full `suite.params` dict, mutates it, and returns it
+- It runs **before** graph building and case generation — downstream operations see the updated params
+- Multiple `@custom_params` functions run in alphabetical order by function name
+- CLI `--param` overrides take precedence (they run after custom params)
+- Returning `None` raises an error — always return the params dict
+
+See the full example at `examples/custom_params_demo.py`.
 
 ## Parameter Support
 

@@ -175,6 +175,8 @@ Override from the command line:
 testweaver run simple_test.yaml -p filename=/tmp/other.txt --format text
 ```
 
+**Environment-aware params**: Use `@custom_params` to detect the runtime environment and auto-adjust params before test cases are generated (e.g., detect cgroup version, hypervisor availability, or host architecture). See [Core Concepts](concepts.md#custom-params-environment-detection) for details.
+
 ## Step 7: Pass Runtime Data Between Operations
 
 TestWeaver passes the `env` tree as the second argument to every operation callable. Use it to share dynamic data (UUIDs, IPs, config hashes) without polluting the global params:
@@ -237,3 +239,8 @@ testweaver graph my_test.yaml --format dot | dot -Tpng -o graph.png  # Image
   - [Filtering](examples/filtering.md) — run specific subsets of cases
   - [Logging](examples/logging.md) — debug and trace execution with `--trace` and `TESTWEAVER_LOG`
   - [Reporting](examples/reporting.md) — JUnit XML, TAP, HTML output
+
+- Example files in the repo:
+  - `examples/custom_params_demo.py` — detect environment before case generation
+  - `examples/data_flow_demo.py` — VM provisioning with runtime data passing
+  - `examples/fault_demo.py` — fault injection scenarios
